@@ -67,8 +67,8 @@ class ArtemisViewModel: ObservableObject {
 
     func startTracking() {
         fetchData()
-        // Refresh every 5 minutes (Horizons data doesn't update in real-time)
-        timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+        // Refresh every 3 seconds
+        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.fetchData()
             }
@@ -76,7 +76,10 @@ class ArtemisViewModel: ObservableObject {
     }
 
     func fetchData() {
-        isLoading = true
+        // Only show loading spinner on first fetch
+        if latestData == nil {
+            isLoading = true
+        }
         errorMessage = nil
 
         Task {
@@ -86,7 +89,10 @@ class ArtemisViewModel: ObservableObject {
                 self.lastUpdated = Date()
                 self.isLoading = false
             } catch {
-                self.errorMessage = error.localizedDescription
+                // Don't overwrite existing data on refresh failures
+                if self.latestData == nil {
+                    self.errorMessage = error.localizedDescription
+                }
                 self.isLoading = false
             }
         }

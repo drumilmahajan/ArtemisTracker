@@ -59,6 +59,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if popover.isShown {
                 popover.performClose(nil)
             } else {
+                viewModel.fetchData()
                 popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             }
         }
@@ -74,40 +75,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func createFloatingWindow() {
-        let contentView = FloatingOverlayView(viewModel: viewModel, onClose: { [weak self] in
-            self?.floatingWindow?.close()
-            self?.floatingWindow = nil
-        })
-
-        let hostingView = NSHostingController(rootView: contentView)
-
-        let window = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 100),
-            styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView],
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 70),
+            styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
 
-        window.contentViewController = hostingView
-        window.isFloatingPanel = true
+        let hostingView = NSHostingView(
+            rootView: FloatingOverlayView(viewModel: viewModel, onClose: { [weak self] in
+                self?.closeFloatingWindow()
+            })
+        )
+
+        window.contentView = hostingView
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
-        window.backgroundColor = .clear
-        window.isOpaque = false
+        window.backgroundColor = NSColor.windowBackgroundColor
         window.hasShadow = true
+        window.isReleasedWhenClosed = false
 
         // Position at top center of screen
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
-            let x = screenFrame.midX - 190
-            let y = screenFrame.maxY - 110
+            let x = screenFrame.midX - 200
+            let y = screenFrame.maxY - 80
             window.setFrameOrigin(NSPoint(x: x, y: y))
         }
 
         window.orderFrontRegardless()
         floatingWindow = window
+    }
+
+    func closeFloatingWindow() {
+        floatingWindow?.close()
+        floatingWindow = nil
     }
 }
