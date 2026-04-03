@@ -11,10 +11,15 @@ struct TrajectorySceneView: NSViewRepresentable {
         let scnView = SCNView()
         scnView.scene = context.coordinator.scene
         scnView.backgroundColor = .black
-        scnView.allowsCameraControl = false  // Fixed top-down view
+        scnView.allowsCameraControl = true
         scnView.autoenablesDefaultLighting = false
         scnView.antialiasingMode = .multisampling4X
         scnView.pointOfView = context.coordinator.cameraNode
+
+        // Allow pan + zoom only, no rotation
+        let controller = scnView.defaultCameraController
+        controller.interactionMode = .pan
+        controller.inertiaEnabled = true
 
         context.coordinator.scnView = scnView
         return scnView
@@ -287,8 +292,11 @@ struct TrajectorySceneView: NSViewRepresentable {
             lastMoonPos = moonPos
             lastCraftPos = artPos
 
-            // Always keep camera framed on all objects (fixed top-down)
-            frameCamera(moonPos: moonPos, craftPos: artPos)
+            // Frame camera once, then let user pan/zoom freely
+            if !hasInitializedCamera {
+                hasInitializedCamera = true
+                frameCamera(moonPos: moonPos, craftPos: artPos)
+            }
         }
 
         // MARK: - Trajectory Drawing
@@ -362,10 +370,8 @@ struct TrajectorySceneView: NSViewRepresentable {
             while i < points.count {
                 let start = points[i - step]
                 let end = points[i]
-                if (i / step) % 3 != 0 {
-                    let seg = makeLine(from: start, to: end, color: NSColor(white: 0.25, alpha: 0.35), radius: 0.04)
-                    orbitNode.addChildNode(seg)
-                }
+                let seg = makeLine(from: start, to: end, color: NSColor(white: 0.5, alpha: 0.7), radius: 0.06)
+                orbitNode.addChildNode(seg)
                 i += step
             }
 
