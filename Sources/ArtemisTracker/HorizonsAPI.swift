@@ -5,10 +5,12 @@ struct HorizonsAPI {
     private let artemisID = "-1024"  // Artemis II spacecraft
     private let moonID = "301"       // Moon
 
-    /// Returns raw state vectors for Artemis and Moon (Earth-centered)
+    /// Returns raw state vectors for Artemis and Moon, plus light-time and range-rate
     func fetchRawVectors() async throws -> (
         artemis: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double),
-        moon: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)
+        moon: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double),
+        lightTime: Double,
+        rangeRate: Double
     ) {
         let now = Date()
         let formatter = DateFormatter()
@@ -29,7 +31,9 @@ struct HorizonsAPI {
 
         return (
             artemis: (x: art.x, y: art.y, z: art.z, vx: art.vx, vy: art.vy, vz: art.vz),
-            moon: (x: moon.x, y: moon.y, z: moon.z, vx: moon.vx, vy: moon.vy, vz: moon.vz)
+            moon: (x: moon.x, y: moon.y, z: moon.z, vx: moon.vx, vy: moon.vy, vz: moon.vz),
+            lightTime: art.lt,
+            rangeRate: art.rr
         )
     }
 
@@ -66,6 +70,8 @@ struct HorizonsAPI {
     struct StateVector {
         let x, y, z: Double
         let vx, vy, vz: Double
+        let lt: Double   // light-time (seconds)
+        let rr: Double   // range-rate (km/s)
     }
 
     private func fetchVectors(target: String, center: String, start: String, stop: String, step: String) async throws -> [StateVector] {
@@ -144,14 +150,25 @@ struct HorizonsAPI {
             let parts = line.components(separatedBy: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
 
-            if parts.count >= 8,
+            // CSV: JDTDB, CalDate, X, Y, Z, VX, VY, VZ, LT, RG, RR
+            if parts.count >= 11,
+               let x = Double(parts[2]),
+               let y = Double(parts[3]),
+               let z = Double(parts[4]),
+               let vx = Double(parts[5]),
+               let vy = Double(parts[6]),
+               let vz = Double(parts[7]),
+               let lt = Double(parts[8]),
+               let rr = Double(parts[10]) {
+                vectors.append(StateVector(x: x, y: y, z: z, vx: vx, vy: vy, vz: vz, lt: lt, rr: rr))
+            } else if parts.count >= 8,
                let x = Double(parts[2]),
                let y = Double(parts[3]),
                let z = Double(parts[4]),
                let vx = Double(parts[5]),
                let vy = Double(parts[6]),
                let vz = Double(parts[7]) {
-                vectors.append(StateVector(x: x, y: y, z: z, vx: vx, vy: vy, vz: vz))
+                vectors.append(StateVector(x: x, y: y, z: z, vx: vx, vy: vy, vz: vz, lt: 0, rr: 0))
             }
         }
 

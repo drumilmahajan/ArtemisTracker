@@ -404,15 +404,15 @@ struct TrajectorySceneView: NSViewRepresentable {
                 sqrt(pow(p.x - cx, 2) + pow(p.y - cy, 2) + pow(p.z - cz, 2))
             }
             let maxDist = dists.max() ?? 20
-            let camDist = maxDist * 2.2 + 10
+            let camDist = maxDist * 2.5 + 15
 
             SCNTransaction.begin()
             SCNTransaction.animationDuration = 1.0
-            cameraNode.position = SCNVector3(cx + camDist * 0.2, cy + camDist * 0.6, cz + camDist * 0.7)
+            // Top-down view: camera above looking down (Y-up)
+            cameraNode.position = SCNVector3(cx, cy + camDist, cz + camDist * 0.1)
             cameraNode.look(at: center)
             SCNTransaction.commit()
 
-            // Update orbit center so trackpad rotation orbits around the scene center
             scnView?.defaultCameraController.target = center
         }
 

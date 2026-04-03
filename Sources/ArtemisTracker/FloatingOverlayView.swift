@@ -5,72 +5,62 @@ struct FloatingOverlayView: View {
     var onClose: () -> Void
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             Image(systemName: "moon.stars.fill")
-                .font(.title3)
+                .font(.system(size: 14))
                 .foregroundStyle(.yellow)
 
+            // MET
+            Text(viewModel.met)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(.primary)
+
             if let data = viewModel.latestData {
-                VStack(alignment: .leading, spacing: 2) {
+                Rectangle().fill(.separator).frame(width: 1, height: 24)
+
+                VStack(alignment: .leading, spacing: 1) {
                     Text("EARTH")
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.blue.opacity(0.8))
+                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.blue.opacity(0.7))
                     Text(data.distanceFromEarthFormatted)
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.primary)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 }
 
-                Rectangle()
-                    .fill(.separator)
-                    .frame(width: 1, height: 28)
+                Rectangle().fill(.separator).frame(width: 1, height: 24)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text("MOON")
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .font(.system(size: 7, weight: .bold, design: .monospaced))
                         .foregroundStyle(.gray)
                     Text(data.distanceFromMoonFormatted)
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.primary)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 }
 
-                Rectangle()
-                    .fill(.separator)
-                    .frame(width: 1, height: 28)
+                Rectangle().fill(.separator).frame(width: 1, height: 24)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text("SPEED")
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.orange.opacity(0.8))
-                    Text(data.speedFormatted)
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.primary)
+                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.orange.opacity(0.7))
+                    Text(MissionData.speedContext(kmPerSec: data.speedKmS))
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 }
 
-                Circle()
-                    .fill(.green)
-                    .frame(width: 5, height: 5)
+                Circle().fill(.green).frame(width: 5, height: 5)
             } else if viewModel.isLoading {
-                ProgressView()
-                    .scaleEffect(0.7)
-                Text("Loading...")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Waiting for data...")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                ProgressView().scaleEffect(0.7)
             }
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 2)
 
             Button(action: onClose) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 12))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 }

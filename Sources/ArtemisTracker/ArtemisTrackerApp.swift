@@ -32,7 +32,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 340, height: 560)
+        popover.contentSize = NSSize(width: 360, height: 580)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(
@@ -163,33 +163,24 @@ struct SceneWindowView: View {
                 .frame(minWidth: 400)
 
             // Stats sidebar
-            VStack(alignment: .leading, spacing: 14) {
-                Text("ARTEMIS II")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.primary)
+            VStack(alignment: .leading, spacing: 12) {
+                // MET
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ARTEMIS II")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text(viewModel.met)
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                }
 
                 if let data = viewModel.latestData {
                     Group {
                         StatBlock(label: "FROM EARTH", value: data.distanceFromEarthFormatted, color: .blue)
                         StatBlock(label: "FROM MOON", value: data.distanceFromMoonFormatted, color: .gray)
-                        StatBlock(label: "SPEED", value: data.speedFormatted, color: .orange)
+                        StatBlock(label: "SPEED", value: MissionData.speedContext(kmPerSec: data.speedKmS), color: .orange)
+                        StatBlock(label: "SIGNAL DELAY", value: data.signalDelayFormatted, color: .cyan)
                         StatBlock(label: "PHASE", value: data.missionPhase, color: .green)
                     }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("POSITION (km)")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                        Text("X: \(String(format: "%.1f", data.positionKm.x))")
-                            .font(.system(size: 11, design: .monospaced))
-                        Text("Y: \(String(format: "%.1f", data.positionKm.y))")
-                            .font(.system(size: 11, design: .monospaced))
-                        Text("Z: \(String(format: "%.1f", data.positionKm.z))")
-                            .font(.system(size: 11, design: .monospaced))
-                    }
-                    .foregroundStyle(.secondary)
 
                     Spacer()
 

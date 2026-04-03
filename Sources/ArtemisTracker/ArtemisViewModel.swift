@@ -10,25 +10,29 @@ struct ArtemisData {
     let distanceFromEarthKm: Double
     let distanceFromMoonKm: Double
     let speedKmS: Double
+    let lightTimeSeconds: Double    // one-way signal delay
+    let rangeRateKmS: Double        // positive = moving away from Earth
 
     var distanceFromEarthFormatted: String {
         if distanceFromEarthKm > 1_000_000 {
             return String(format: "%.1fM km", distanceFromEarthKm / 1_000_000)
-        } else {
-            return String(format: "%.0f km", distanceFromEarthKm)
         }
+        return String(format: "%.0f km", distanceFromEarthKm)
     }
 
     var distanceFromMoonFormatted: String {
         if distanceFromMoonKm > 1_000_000 {
             return String(format: "%.1fM km", distanceFromMoonKm / 1_000_000)
-        } else {
-            return String(format: "%.0f km", distanceFromMoonKm)
         }
+        return String(format: "%.0f km", distanceFromMoonKm)
     }
 
     var speedFormatted: String {
         return String(format: "%.2f km/s", speedKmS)
+    }
+
+    var signalDelayFormatted: String {
+        return String(format: "%.2fs", lightTimeSeconds)
     }
 
     var missionPhase: String {
@@ -63,49 +67,57 @@ class ArtemisViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var lastAPIFetch: Date?
+    @Published var met: String = MissionData.metString()
+    @Published var missionProgress: Double = MissionData.missionProgress()
 
-    // Full planned trajectory (positions in km, Earth-centered)
     @Published var plannedTrajectory: [(x: Double, y: Double, z: Double)] = []
     @Published var moonOrbit: [(x: Double, y: Double, z: Double)] = []
 
-    // Raw state from last API call, used for interpolation
     private var baseArtemis: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
     private var baseMoon: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
+    private var baseLightTime: Double = 0
+    private var baseRangeRate: Double = 0
     private var baseTime: Date?
 
     private var apiTimer: Timer?
     private var interpolationTimer: Timer?
+    private var metTimer: Timer?
     private let horizonsAPI = HorizonsAPI()
 
     func startTracking() {
         fetchFromAPI()
         fetchTrajectory()
 
-        // Fetch fresh position from API every 30 seconds
         apiTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.fetchFromAPI()
             }
         }
-        // Interpolate position every 100ms for smooth live updates
         interpolationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             DispatchQueue.main.async {
                 self?.interpolate()
             }
         }
+        // Update MET every second
+        metTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.met = MissionData.metString()
+                self?.missionProgress = MissionData.missionProgress()
+            }
+        }
     }
 
     func fetchFromAPI() {
-        if latestData == nil {
-            isLoading = true
-        }
+        if latestData == nil { isLoading = true }
         errorMessage = nil
 
         Task {
             do {
-                let (artemis, moon) = try await horizonsAPI.fetchRawVectors()
-                self.baseArtemis = artemis
-                self.baseMoon = moon
+                let result = try await horizonsAPI.fetchRawVectors()
+                self.baseArtemis = result.artemis
+                self.baseMoon = result.moon
+                self.baseLightTime = result.lightTime
+                self.baseRangeRate = result.rangeRate
                 self.baseTime = Date()
                 self.lastAPIFetch = Date()
                 self.isLoading = false
@@ -119,14 +131,11 @@ class ArtemisViewModel: ObservableObject {
         }
     }
 
-    /// Fetch the full mission trajectory once (past + future)
     private func fetchTrajectory() {
-        // Fetch trajectory and moon orbit independently so one failure doesn't block the other
         Task {
             do {
                 let traj = try await horizonsAPI.fetchFullTrajectory()
                 self.plannedTrajectory = traj
-                print("Loaded \(traj.count) trajectory points")
             } catch {
                 print("Could not fetch trajectory: \(error)")
             }
@@ -135,7 +144,6 @@ class ArtemisViewModel: ObservableObject {
             do {
                 let orb = try await horizonsAPI.fetchMoonOrbit()
                 self.moonOrbit = orb
-                print("Loaded \(orb.count) moon orbit points")
             } catch {
                 print("Could not fetch moon orbit: \(error)")
             }
@@ -160,6 +168,9 @@ class ArtemisViewModel: ObservableObject {
         let distMoon = sqrt(dx * dx + dy * dy + dz * dz)
         let speed = sqrt(art.vx * art.vx + art.vy * art.vy + art.vz * art.vz)
 
+        // Interpolate light-time based on distance change
+        let lt = distEarth / 299_792.458 // speed of light in km/s
+
         latestData = ArtemisData(
             timestamp: Date(),
             positionKm: (x: ax, y: ay, z: az),
@@ -168,14 +179,15 @@ class ArtemisViewModel: ObservableObject {
             moonVelocityKmS: (vx: moon.vx, vy: moon.vy, vz: moon.vz),
             distanceFromEarthKm: distEarth,
             distanceFromMoonKm: distMoon,
-            speedKmS: speed
+            speedKmS: speed,
+            lightTimeSeconds: lt,
+            rangeRateKmS: baseRangeRate
         )
     }
 
     func stopTracking() {
-        apiTimer?.invalidate()
-        apiTimer = nil
-        interpolationTimer?.invalidate()
-        interpolationTimer = nil
+        apiTimer?.invalidate(); apiTimer = nil
+        interpolationTimer?.invalidate(); interpolationTimer = nil
+        metTimer?.invalidate(); metTimer = nil
     }
 }
