@@ -162,18 +162,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 /// Full 3D window view with stats sidebar
 struct SceneWindowView: View {
     @ObservedObject var viewModel: ArtemisViewModel
+    @State private var resetTrigger = 0
 
     var body: some View {
         HStack(spacing: 0) {
             // 3D Scene
-            TrajectorySceneView(viewModel: viewModel)
+            TrajectorySceneView(viewModel: viewModel, resetTrigger: resetTrigger)
                 .frame(minWidth: 400)
 
             // Stats sidebar
-            VStack(alignment: .leading, spacing: 16) {
-                Text("MISSION DATA")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 14) {
+                Text("ARTEMIS II")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.primary)
 
                 if let data = viewModel.latestData {
                     Group {
@@ -200,11 +201,33 @@ struct SceneWindowView: View {
 
                     Spacer()
 
-                    HStack(spacing: 4) {
-                        Circle().fill(.green).frame(width: 6, height: 6)
-                        Text("Live")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                    // Legend
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("LEGEND")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                        LegendRow(color: .green, label: "Planned trajectory")
+                        LegendRow(color: .gray, label: "Moon orbit")
+                    }
+
+                    Divider()
+
+                    // Reset + Live
+                    HStack {
+                        Button(action: { resetTrigger += 1 }) {
+                            Label("Reset View", systemImage: "arrow.counterclockwise")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+
+                        Spacer()
+
+                        HStack(spacing: 4) {
+                            Circle().fill(.green).frame(width: 6, height: 6)
+                            Text("Live")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 } else {
                     Spacer()
@@ -213,8 +236,24 @@ struct SceneWindowView: View {
                 }
             }
             .padding()
-            .frame(width: 180)
+            .frame(width: 190)
             .background(.ultraThinMaterial)
+        }
+    }
+}
+
+struct LegendRow: View {
+    let color: Color
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(color)
+                .frame(width: 14, height: 3)
+            Text(label)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary)
         }
     }
 }
