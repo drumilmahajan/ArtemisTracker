@@ -5,69 +5,37 @@ struct HorizonsAPI {
     private let artemisID = "-1024"  // Artemis II Orion spacecraft
     private let moonID = "301"       // Moon
 
-    /// Fetches the current Artemis position relative to Earth and computes distance to Moon
-    func fetchArtemisPosition() async throws -> ArtemisData {
+    /// Returns raw state vectors for Artemis and Moon (Earth-centered)
+    func fetchRawVectors() async throws -> (
+        artemis: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double),
+        moon: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)
+    ) {
         let now = Date()
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
         formatter.timeZone = TimeZone(identifier: "UTC")
 
-        let startTime = formatter.string(from: now.addingTimeInterval(-3600)) // 1 hour ago
+        let startTime = formatter.string(from: now.addingTimeInterval(-3600))
         let stopTime = formatter.string(from: now)
 
-        // Fetch Artemis position relative to Earth center
-        let earthData = try await fetchVectors(
-            target: artemisID,
-            center: "500@399",  // Earth center
-            start: startTime,
-            stop: stopTime
-        )
+        async let artemisVectors = fetchVectors(target: artemisID, center: "500@399", start: startTime, stop: stopTime)
+        async let moonVectors = fetchVectors(target: moonID, center: "500@399", start: startTime, stop: stopTime)
 
-        // Fetch Moon position relative to Earth center (to compute Artemis-Moon distance)
-        let moonData = try await fetchVectors(
-            target: moonID,
-            center: "500@399",
-            start: startTime,
-            stop: stopTime
-        )
+        let (artResult, moonResult) = try await (artemisVectors, moonVectors)
 
-        guard let artemisState = earthData.last, let moonState = moonData.last else {
+        guard let art = artResult.last, let moon = moonResult.last else {
             throw TrackerError.noDataAvailable
         }
 
-        // Distance from Earth = magnitude of position vector
-        let distEarth = sqrt(
-            artemisState.x * artemisState.x +
-            artemisState.y * artemisState.y +
-            artemisState.z * artemisState.z
-        )
-
-        // Distance from Moon = magnitude of (artemis - moon) position vector
-        let dx = artemisState.x - moonState.x
-        let dy = artemisState.y - moonState.y
-        let dz = artemisState.z - moonState.z
-        let distMoon = sqrt(dx * dx + dy * dy + dz * dz)
-
-        // Speed
-        let speed = sqrt(
-            artemisState.vx * artemisState.vx +
-            artemisState.vy * artemisState.vy +
-            artemisState.vz * artemisState.vz
-        )
-
-        return ArtemisData(
-            timestamp: now,
-            positionKm: (x: artemisState.x, y: artemisState.y, z: artemisState.z),
-            velocityKmS: (vx: artemisState.vx, vy: artemisState.vy, vz: artemisState.vz),
-            distanceFromEarthKm: distEarth,
-            distanceFromMoonKm: distMoon,
-            speedKmS: speed
+        return (
+            artemis: (x: art.x, y: art.y, z: art.z, vx: art.vx, vy: art.vy, vz: art.vz),
+            moon: (x: moon.x, y: moon.y, z: moon.z, vx: moon.vx, vy: moon.vy, vz: moon.vz)
         )
     }
 
     struct StateVector {
-        let x, y, z: Double       // position in km
-        let vx, vy, vz: Double    // velocity in km/s
+        let x, y, z: Double
+        let vx, vy, vz: Double
     }
 
     private func fetchVectors(target: String, center: String, start: String, stop: String) async throws -> [StateVector] {
@@ -79,7 +47,7 @@ struct HorizonsAPI {
             URLQueryItem(name: "CENTER", value: "'\(center)'"),
             URLQueryItem(name: "START_TIME", value: "'\(start)'"),
             URLQueryItem(name: "STOP_TIME", value: "'\(stop)'"),
-            URLQueryItem(name: "STEP_SIZE", value: "'30 m'"),  // 30-minute steps
+            URLQueryItem(name: "STEP_SIZE", value: "'30 m'"),
             URLQueryItem(name: "OUT_UNITS", value: "'KM-S'"),
             URLQueryItem(name: "REF_SYSTEM", value: "'ICRF'"),
             URLQueryItem(name: "VEC_TABLE", value: "'3'"),
@@ -104,10 +72,8 @@ struct HorizonsAPI {
     }
 
     private func parseVectors(from text: String) throws -> [StateVector] {
-        // Find data between $$SOE and $$EOE markers
         guard let soeRange = text.range(of: "$$SOE"),
               let eoeRange = text.range(of: "$$EOE") else {
-            // Check if there's an error message
             if text.contains("No ephemeris for target") {
                 throw TrackerError.noDataAvailable
             }
@@ -117,9 +83,6 @@ struct HorizonsAPI {
         let dataSection = text[soeRange.upperBound..<eoeRange.lowerBound]
         var vectors: [StateVector] = []
 
-        // CSV format: each data entry spans multiple lines
-        // Format with VEC_TABLE=3 and CSV_FORMAT=YES:
-        // JDTDB, Calendar Date, X, Y, Z, VX, VY, VZ, LT, RG, RR,
         let lines = dataSection.components(separatedBy: "\n")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -128,7 +91,6 @@ struct HorizonsAPI {
             let parts = line.components(separatedBy: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
 
-            // We need at least 8 values: JDTDB, CalDate, X, Y, Z, VX, VY, VZ
             if parts.count >= 8,
                let x = Double(parts[2]),
                let y = Double(parts[3]),

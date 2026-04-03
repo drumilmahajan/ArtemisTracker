@@ -5,76 +5,72 @@ struct FloatingOverlayView: View {
     var onClose: () -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
-            // Artemis icon
+        HStack(spacing: 14) {
             Image(systemName: "moon.stars.fill")
-                .font(.title2)
+                .font(.title3)
                 .foregroundStyle(.yellow)
 
             if let data = viewModel.latestData {
-                // Earth distance
                 VStack(alignment: .leading, spacing: 2) {
                     Text("EARTH")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
                         .foregroundStyle(.blue.opacity(0.8))
                     Text(data.distanceFromEarthFormatted)
-                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.primary)
                 }
 
-                Divider()
-                    .frame(height: 30)
+                Rectangle()
+                    .fill(.separator)
+                    .frame(width: 1, height: 28)
 
-                // Moon distance
                 VStack(alignment: .leading, spacing: 2) {
                     Text("MOON")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
                         .foregroundStyle(.gray)
                     Text(data.distanceFromMoonFormatted)
-                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.primary)
                 }
 
-                Divider()
-                    .frame(height: 30)
+                Rectangle()
+                    .fill(.separator)
+                    .frame(width: 1, height: 28)
 
-                // Speed
                 VStack(alignment: .leading, spacing: 2) {
                     Text("SPEED")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
                         .foregroundStyle(.orange.opacity(0.8))
                     Text(data.speedFormatted)
-                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.primary)
                 }
+
+                Circle()
+                    .fill(.green)
+                    .frame(width: 5, height: 5)
             } else if viewModel.isLoading {
                 ProgressView()
-                    .scaleEffect(0.8)
+                    .scaleEffect(0.7)
                 Text("Loading...")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("No data")
+                Text("Waiting for data...")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
-            // Close button
             Button(action: onClose) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(.white.opacity(0.1), lineWidth: 1)
-        )
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
     }
 }

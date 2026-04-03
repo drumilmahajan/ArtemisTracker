@@ -3,9 +3,10 @@ import SwiftUI
 struct PopoverView: View {
     @ObservedObject var viewModel: ArtemisViewModel
     var onToggleOverlay: () -> Void
+    var onOpen3D: () -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             // Header
             HStack {
                 Image(systemName: "moon.stars.fill")
@@ -31,70 +32,68 @@ struct PopoverView: View {
                     Spacer()
                 }
 
-                // Progress bar Earth → Moon
-                VStack(spacing: 4) {
-                    HStack {
-                        Image(systemName: "globe.americas.fill")
-                            .foregroundStyle(.blue)
-                            .font(.caption)
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(.quaternary)
-                                    .frame(height: 8)
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [.blue, .cyan, .white],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
+                // Progress bar Earth -> Moon
+                HStack {
+                    Image(systemName: "globe.americas.fill")
+                        .foregroundStyle(.blue)
+                        .font(.caption)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(.quaternary)
+                                .frame(height: 8)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.blue, .cyan, .white],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
                                     )
-                                    .frame(width: max(8, geo.size.width * data.progressToMoon), height: 8)
-                                // Spacecraft indicator
-                                Image(systemName: "airplane")
-                                    .font(.system(size: 10))
-                                    .rotationEffect(.degrees(-45))
-                                    .offset(x: max(0, geo.size.width * data.progressToMoon - 8), y: -8)
-                            }
+                                )
+                                .frame(width: max(8, geo.size.width * data.progressToMoon), height: 8)
+                            Image(systemName: "airplane")
+                                .font(.system(size: 10))
+                                .rotationEffect(.degrees(-45))
+                                .offset(x: max(0, geo.size.width * data.progressToMoon - 8), y: -8)
                         }
-                        .frame(height: 24)
-                        Image(systemName: "moon.fill")
-                            .foregroundStyle(.gray)
-                            .font(.caption)
                     }
+                    .frame(height: 24)
+                    Image(systemName: "moon.fill")
+                        .foregroundStyle(.gray)
+                        .font(.caption)
                 }
 
-                // Stats grid
-                VStack(spacing: 12) {
+                // Stats
+                VStack(spacing: 10) {
                     StatRow(icon: "globe.americas.fill", iconColor: .blue,
                             label: "From Earth", value: data.distanceFromEarthFormatted)
                     StatRow(icon: "moon.fill", iconColor: .gray,
                             label: "From Moon", value: data.distanceFromMoonFormatted)
                     StatRow(icon: "gauge.with.needle.fill", iconColor: .orange,
                             label: "Speed", value: data.speedFormatted)
-
-                    Divider()
-
-                    // Position vector
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Position (J2000 Earth-centered)")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        HStack(spacing: 8) {
-                            CoordLabel(axis: "X", value: data.positionKm.x)
-                            CoordLabel(axis: "Y", value: data.positionKm.y)
-                            CoordLabel(axis: "Z", value: data.positionKm.z)
-                        }
-                    }
                 }
 
-                if let lastUpdated = viewModel.lastUpdated {
+                // Mini 3D preview
+                TrajectorySceneView(viewModel: viewModel)
+                    .frame(height: 180)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(.white.opacity(0.1), lineWidth: 1)
+                    )
+
+                if let lastFetch = viewModel.lastAPIFetch {
                     HStack {
-                        Text("Updated \(lastUpdated, style: .relative) ago")
+                        Text("API: \(lastFetch, style: .relative) ago")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                         Spacer()
+                        Circle()
+                            .fill(.green)
+                            .frame(width: 6, height: 6)
+                        Text("Live interpolation")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
                     }
                 }
             } else if let error = viewModel.errorMessage {
@@ -118,13 +117,13 @@ struct PopoverView: View {
             // Actions
             HStack {
                 Button(action: onToggleOverlay) {
-                    Label("Floating Overlay", systemImage: "macwindow.on.rectangle")
+                    Label("Overlay", systemImage: "macwindow.on.rectangle")
                         .font(.caption)
                 }
                 .buttonStyle(.bordered)
 
-                Button(action: { viewModel.fetchData() }) {
-                    Label("Refresh", systemImage: "arrow.clockwise")
+                Button(action: onOpen3D) {
+                    Label("3D View", systemImage: "cube.fill")
                         .font(.caption)
                 }
                 .buttonStyle(.bordered)
@@ -161,22 +160,6 @@ struct StatRow: View {
             Text(value)
                 .font(.system(.body, design: .monospaced))
                 .fontWeight(.medium)
-        }
-    }
-}
-
-struct CoordLabel: View {
-    let axis: String
-    let value: Double
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(axis)
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.tertiary)
-            Text(String(format: "%.0f", value))
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.secondary)
         }
     }
 }
