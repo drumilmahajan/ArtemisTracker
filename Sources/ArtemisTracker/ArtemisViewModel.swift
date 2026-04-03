@@ -64,6 +64,10 @@ class ArtemisViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var lastAPIFetch: Date?
 
+    // Full planned trajectory (positions in km, Earth-centered)
+    @Published var plannedTrajectory: [(x: Double, y: Double, z: Double)] = []
+    @Published var moonOrbit: [(x: Double, y: Double, z: Double)] = []
+
     // Raw state from last API call, used for interpolation
     private var baseArtemis: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
     private var baseMoon: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
@@ -75,7 +79,9 @@ class ArtemisViewModel: ObservableObject {
 
     func startTracking() {
         fetchFromAPI()
-        // Fetch fresh data from API every 30 seconds
+        fetchTrajectory()
+
+        // Fetch fresh position from API every 30 seconds
         apiTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.fetchFromAPI()
@@ -113,12 +119,27 @@ class ArtemisViewModel: ObservableObject {
         }
     }
 
+    /// Fetch the full mission trajectory once (past + future)
+    private func fetchTrajectory() {
+        Task {
+            do {
+                async let trajectory = horizonsAPI.fetchFullTrajectory()
+                async let orbit = horizonsAPI.fetchMoonOrbit()
+                let (traj, orb) = try await (trajectory, orbit)
+                self.plannedTrajectory = traj
+                self.moonOrbit = orb
+            } catch {
+                // Non-fatal — 3D view just won't show the planned path
+                print("Could not fetch trajectory: \(error)")
+            }
+        }
+    }
+
     private func interpolate() {
         guard let art = baseArtemis, let moon = baseMoon, let base = baseTime else { return }
 
-        let dt = Date().timeIntervalSince(base) // seconds since last API fetch
+        let dt = Date().timeIntervalSince(base)
 
-        // Extrapolate positions using velocity
         let ax = art.x + art.vx * dt
         let ay = art.y + art.vy * dt
         let az = art.z + art.vz * dt

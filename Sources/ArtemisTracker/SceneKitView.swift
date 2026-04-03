@@ -20,7 +20,16 @@ struct TrajectorySceneView: NSViewRepresentable {
 
     func updateNSView(_ scnView: SCNView, context: Context) {
         guard let data = viewModel.latestData else { return }
-        context.coordinator.updatePositions(data: data, scale: scaleFactor)
+        let coord = context.coordinator
+        coord.updatePositions(data: data, scale: scaleFactor)
+
+        // Draw planned trajectory once when available
+        if !coord.hasDrawnTrajectory && !viewModel.plannedTrajectory.isEmpty {
+            coord.drawPlannedTrajectory(viewModel.plannedTrajectory, scale: scaleFactor)
+        }
+        if !coord.hasDrawnMoonOrbit && !viewModel.moonOrbit.isEmpty {
+            coord.drawMoonOrbit(viewModel.moonOrbit, scale: scaleFactor)
+        }
     }
 
     func makeCoordinator() -> SceneCoordinator {
@@ -32,18 +41,15 @@ struct TrajectorySceneView: NSViewRepresentable {
         let earthNode: SCNNode
         let moonNode: SCNNode
         let craftNode: SCNNode
-        let trailNode: SCNNode
         let cameraNode: SCNNode
-        let craftGlowNode: SCNNode
+
+        var hasDrawnTrajectory = false
+        var hasDrawnMoonOrbit = false
 
         private let scaleFactor: Double
-        // Exaggerated sizes so they're visible (not to real scale)
         private let earthDisplayRadius: CGFloat = 2.0
         private let moonDisplayRadius: CGFloat = 0.8
-        private let craftDisplaySize: CGFloat = 0.6
-
-        private var trailPositions: [SCNVector3] = []
-        private let maxTrailPoints = 800
+        private let craftDisplaySize: CGFloat = 0.5
         private var hasInitializedCamera = false
 
         init(scaleFactor: Double) {
@@ -80,15 +86,11 @@ struct TrajectorySceneView: NSViewRepresentable {
             glowMat.diffuse.contents = NSColor(red: 0.3, green: 0.6, blue: 1.0, alpha: 0.12)
             glowMat.isDoubleSided = true
             glowGeo.firstMaterial = glowMat
-            let glowNode = SCNNode(geometry: glowGeo)
-            earthNode.addChildNode(glowNode)
+            earthNode.addChildNode(SCNNode(geometry: glowGeo))
 
-            // Earth label
             let earthLabel = Self.makeLabel("Earth", size: 1.0)
             earthLabel.position = SCNVector3(0, Float(earthDisplayRadius) + 1.0, 0)
             earthNode.addChildNode(earthLabel)
-
-            // Earth spin
             earthNode.runAction(.repeatForever(.rotateBy(x: 0, y: 2 * .pi, z: 0, duration: 30)))
 
             // === Moon ===
@@ -101,13 +103,11 @@ struct TrajectorySceneView: NSViewRepresentable {
             moonNode = SCNNode(geometry: moonGeo)
             scene.rootNode.addChildNode(moonNode)
 
-            // Moon label
             let moonLabel = Self.makeLabel("Moon", size: 0.8)
             moonLabel.position = SCNVector3(0, Float(moonDisplayRadius) + 0.6, 0)
             moonNode.addChildNode(moonLabel)
 
-            // === Spacecraft ===
-            // Bright sphere with glow so it's always visible
+            // === Artemis Spacecraft ===
             let craftGeo = SCNSphere(radius: craftDisplaySize)
             let craftMat = SCNMaterial()
             craftMat.diffuse.contents = NSColor.white
@@ -116,18 +116,16 @@ struct TrajectorySceneView: NSViewRepresentable {
             craftNode = SCNNode(geometry: craftGeo)
             scene.rootNode.addChildNode(craftNode)
 
-            // Craft outer glow
-            let craftGlowGeo = SCNSphere(radius: craftDisplaySize * 2.5)
-            let craftGlowMat = SCNMaterial()
-            craftGlowMat.diffuse.contents = NSColor(red: 1.0, green: 0.85, blue: 0.3, alpha: 0.15)
-            craftGlowMat.emission.contents = NSColor(red: 1.0, green: 0.85, blue: 0.3, alpha: 0.1)
-            craftGlowMat.isDoubleSided = true
-            craftGlowGeo.firstMaterial = craftGlowMat
-            craftGlowNode = SCNNode(geometry: craftGlowGeo)
-            craftNode.addChildNode(craftGlowNode)
+            // Glow halo
+            let glowHalo = SCNSphere(radius: craftDisplaySize * 2.5)
+            let haloMat = SCNMaterial()
+            haloMat.diffuse.contents = NSColor(red: 1.0, green: 0.85, blue: 0.3, alpha: 0.15)
+            haloMat.emission.contents = NSColor(red: 1.0, green: 0.85, blue: 0.3, alpha: 0.1)
+            haloMat.isDoubleSided = true
+            glowHalo.firstMaterial = haloMat
+            craftNode.addChildNode(SCNNode(geometry: glowHalo))
 
-            // Craft label
-            let craftLabel = Self.makeLabel("Orion", size: 0.7)
+            let craftLabel = Self.makeLabel("Artemis", size: 0.7)
             craftLabel.position = SCNVector3(0, Float(craftDisplaySize) + 0.8, 0)
             craftNode.addChildNode(craftLabel)
 
@@ -139,10 +137,6 @@ struct TrajectorySceneView: NSViewRepresentable {
             craftLight.attenuationStartDistance = 0
             craftLight.attenuationEndDistance = 20
             craftNode.light = craftLight
-
-            // Trail
-            trailNode = SCNNode()
-            scene.rootNode.addChildNode(trailNode)
 
             // === Lighting ===
             let sunLight = SCNNode()
@@ -169,9 +163,6 @@ struct TrajectorySceneView: NSViewRepresentable {
             cameraNode.position = SCNVector3(0, 40, 60)
             cameraNode.look(at: SCNVector3(0, 0, 0))
             scene.rootNode.addChildNode(cameraNode)
-
-            // Moon orbit guide (dashed ring)
-            addOrbitGuide()
         }
 
         func updatePositions(data: ArtemisData, scale: Double) {
@@ -192,36 +183,114 @@ struct TrajectorySceneView: NSViewRepresentable {
             moonNode.position = moonPos
             SCNTransaction.commit()
 
-            // Auto-frame camera on first data
             if !hasInitializedCamera {
                 hasInitializedCamera = true
-                frameCamera(earthPos: SCNVector3Zero, moonPos: moonPos, craftPos: artPos)
-            }
-
-            // Trail
-            trailPositions.append(artPos)
-            if trailPositions.count > maxTrailPoints {
-                trailPositions.removeFirst()
-            }
-            if trailPositions.count % 5 == 0 {
-                updateTrailGeometry()
+                frameCamera(moonPos: moonPos, craftPos: artPos)
             }
         }
 
-        private func frameCamera(earthPos: SCNVector3, moonPos: SCNVector3, craftPos: SCNVector3) {
-            // Find center of all three objects
-            let cx = (earthPos.x + moonPos.x + craftPos.x) / 3
-            let cy = (earthPos.y + moonPos.y + craftPos.y) / 3
-            let cz = (earthPos.z + moonPos.z + craftPos.z) / 3
+        /// Draw the full planned Artemis trajectory as a colored path
+        func drawPlannedTrajectory(_ positions: [(x: Double, y: Double, z: Double)], scale: Double) {
+            hasDrawnTrajectory = true
+            let trajectoryNode = SCNNode()
+            trajectoryNode.name = "plannedTrajectory"
+
+            let points = positions.map {
+                SCNVector3(Float($0.x / scale), Float($0.y / scale), Float($0.z / scale))
+            }
+
+            let count = points.count
+            guard count >= 2 else { return }
+
+            // Draw segments — color from green (past/start) through white to cyan (future/end)
+            let step = max(1, count / 300) // limit segments for performance
+            var i = step
+            while i < count {
+                let start = points[i - step]
+                let end = points[i]
+                let t = Float(i) / Float(count)
+
+                // Past portion: dimmer, future: brighter
+                let color: NSColor
+                if t < 0.5 {
+                    // Green → white for first half
+                    let u = t * 2
+                    color = NSColor(
+                        red: CGFloat(0.2 + 0.8 * u),
+                        green: CGFloat(0.8),
+                        blue: CGFloat(0.2 + 0.8 * u),
+                        alpha: CGFloat(0.3 + 0.4 * u)
+                    )
+                } else {
+                    // White → cyan for second half
+                    let u = (t - 0.5) * 2
+                    color = NSColor(
+                        red: CGFloat(1.0 - 0.7 * u),
+                        green: CGFloat(0.8 + 0.2 * u),
+                        blue: CGFloat(1.0),
+                        alpha: CGFloat(0.5 + 0.3 * u)
+                    )
+                }
+
+                let seg = makeLine(from: start, to: end, color: color, radius: 0.08)
+                trajectoryNode.addChildNode(seg)
+                i += step
+            }
+
+            // Label at start
+            let startLabel = Self.makeLabel("Launch", size: 0.5)
+            startLabel.position = SCNVector3(points[0].x, points[0].y + 1.0, points[0].z)
+            trajectoryNode.addChildNode(startLabel)
+
+            // Label at end
+            if let last = points.last {
+                let endLabel = Self.makeLabel("Return", size: 0.5)
+                endLabel.position = SCNVector3(last.x, last.y + 1.0, last.z)
+                trajectoryNode.addChildNode(endLabel)
+            }
+
+            scene.rootNode.addChildNode(trajectoryNode)
+        }
+
+        /// Draw the Moon's orbit path
+        func drawMoonOrbit(_ positions: [(x: Double, y: Double, z: Double)], scale: Double) {
+            hasDrawnMoonOrbit = true
+            let orbitNode = SCNNode()
+            orbitNode.name = "moonOrbit"
+
+            let points = positions.map {
+                SCNVector3(Float($0.x / scale), Float($0.y / scale), Float($0.z / scale))
+            }
+
+            guard points.count >= 2 else { return }
+
+            let step = max(1, points.count / 150)
+            var i = step
+            while i < points.count {
+                let start = points[i - step]
+                let end = points[i]
+                // Dashed effect: skip every 3rd segment
+                if (i / step) % 3 != 0 {
+                    let seg = makeLine(from: start, to: end, color: NSColor(white: 0.25, alpha: 0.4), radius: 0.03)
+                    orbitNode.addChildNode(seg)
+                }
+                i += step
+            }
+
+            scene.rootNode.addChildNode(orbitNode)
+        }
+
+        private func frameCamera(moonPos: SCNVector3, craftPos: SCNVector3) {
+            let cx = (moonPos.x + craftPos.x) / 2
+            let cy = (moonPos.y + craftPos.y) / 2
+            let cz = (moonPos.z + craftPos.z) / 2
             let center = SCNVector3(cx, cy, cz)
 
-            // Find max distance from center to any object
-            let dists = [earthPos, moonPos, craftPos].map { p in
+            let dists = [SCNVector3Zero, moonPos, craftPos].map { p in
                 sqrt(pow(p.x - cx, 2) + pow(p.y - cy, 2) + pow(p.z - cz, 2))
             }
             let maxDist = dists.max() ?? 20
 
-            // Position camera above and back, far enough to see everything
             let camDist = maxDist * 2.5 + 10
             SCNTransaction.begin()
             SCNTransaction.animationDuration = 1.0
@@ -230,35 +299,7 @@ struct TrajectorySceneView: NSViewRepresentable {
             SCNTransaction.commit()
         }
 
-        private func updateTrailGeometry() {
-            trailNode.childNodes.forEach { $0.removeFromParentNode() }
-            guard trailPositions.count >= 2 else { return }
-
-            let count = trailPositions.count
-            // Draw every other segment for performance
-            let step = max(1, count / 200)
-            var i = step
-            while i < count {
-                let start = trailPositions[i - step]
-                let end = trailPositions[i]
-                let alpha = Float(i) / Float(count)
-
-                let seg = lineBetween(
-                    start: start, end: end,
-                    color: NSColor(
-                        red: CGFloat(0.2 + 0.8 * alpha),
-                        green: CGFloat(0.5 + 0.5 * alpha),
-                        blue: 1.0,
-                        alpha: CGFloat(0.4 + 0.6 * alpha)
-                    ),
-                    radius: 0.06
-                )
-                trailNode.addChildNode(seg)
-                i += step
-            }
-        }
-
-        private func lineBetween(start: SCNVector3, end: SCNVector3, color: NSColor, radius: CGFloat = 0.04) -> SCNNode {
+        private func makeLine(from start: SCNVector3, to end: SCNVector3, color: NSColor, radius: CGFloat) -> SCNNode {
             let dx = end.x - start.x
             let dy = end.y - start.y
             let dz = end.z - start.z
@@ -279,20 +320,6 @@ struct TrajectorySceneView: NSViewRepresentable {
             )
             node.look(at: end, up: scene.rootNode.worldUp, localFront: SCNVector3(0, 1, 0))
             return node
-        }
-
-        private func addOrbitGuide() {
-            let orbitRadius: Float = Float(384_400.0 / scaleFactor)
-            let segments = 120
-            for i in 0..<segments {
-                if i % 3 == 0 { continue }
-                let angle1 = Float(i) / Float(segments) * 2 * .pi
-                let angle2 = Float(i + 1) / Float(segments) * 2 * .pi
-                let start = SCNVector3(cos(angle1) * orbitRadius, 0, sin(angle1) * orbitRadius)
-                let end = SCNVector3(cos(angle2) * orbitRadius, 0, sin(angle2) * orbitRadius)
-                let seg = lineBetween(start: start, end: end, color: NSColor(white: 0.2, alpha: 0.4), radius: 0.02)
-                scene.rootNode.addChildNode(seg)
-            }
         }
 
         static func makeLabel(_ text: String, size: CGFloat) -> SCNNode {
