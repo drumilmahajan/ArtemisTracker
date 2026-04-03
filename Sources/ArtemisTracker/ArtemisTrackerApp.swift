@@ -16,7 +16,6 @@ struct ArtemisTrackerApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var popover: NSPopover!
-    var floatingWindow: NSWindow?
     var sceneWindow: NSWindow?
     var viewModel = ArtemisViewModel()
 
@@ -32,12 +31,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 360, height: 580)
+        popover.contentSize = NSSize(width: 320, height: 380)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(
                 viewModel: viewModel,
-                onToggleOverlay: { [weak self] in self?.toggleFloatingWindow() },
                 onOpen3D: { [weak self] in self?.open3DWindow() }
             )
         )
@@ -55,57 +53,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Floating Overlay
-
-    func toggleFloatingWindow() {
-        if let window = floatingWindow {
-            window.close()
-            floatingWindow = nil
-        } else {
-            createFloatingWindow()
-        }
-    }
-
-    func createFloatingWindow() {
-        let hostingView = NSHostingView(
-            rootView: FloatingOverlayView(viewModel: viewModel, onClose: { [weak self] in
-                self?.floatingWindow?.close()
-                self?.floatingWindow = nil
-            })
-        )
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 55),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-
-        window.contentView = hostingView
-        window.level = .floating
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        window.isMovableByWindowBackground = true
-        window.backgroundColor = NSColor.windowBackgroundColor
-        window.hasShadow = true
-        window.isOpaque = false
-        window.isReleasedWhenClosed = false
-
-        // Round corners
-        window.contentView?.wantsLayer = true
-        window.contentView?.layer?.cornerRadius = 10
-        window.contentView?.layer?.masksToBounds = true
-
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let x = screenFrame.midX - 210
-            let y = screenFrame.maxY - 65
-            window.setFrameOrigin(NSPoint(x: x, y: y))
-        }
-
-        window.orderFrontRegardless()
-        floatingWindow = window
-    }
-
     // MARK: - 3D Window
 
     func open3DWindow() {
@@ -119,7 +66,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 550),
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -131,7 +78,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.makeKeyAndOrderFront(nil)
 
-        // Need to show in dock when 3D window is open
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
@@ -143,46 +89,125 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             self?.sceneWindow = nil
-            // Hide from dock again if no other windows
-            if self?.floatingWindow == nil {
-                NSApp.setActivationPolicy(.accessory)
-            }
+            NSApp.setActivationPolicy(.accessory)
         }
     }
 }
 
-/// Full 3D window view with stats sidebar
+// MARK: - Full 3D Window
+
 struct SceneWindowView: View {
     @ObservedObject var viewModel: ArtemisViewModel
     @State private var resetTrigger = 0
 
     var body: some View {
         HStack(spacing: 0) {
-            // 3D Scene
             TrajectorySceneView(viewModel: viewModel, resetTrigger: resetTrigger)
-                .frame(minWidth: 400)
+                .frame(minWidth: 500)
 
-            // Stats sidebar
-            VStack(alignment: .leading, spacing: 12) {
-                // MET
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("ARTEMIS II")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.met)
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
-                }
-
-                if let data = viewModel.latestData {
-                    Group {
-                        StatBlock(label: "FROM EARTH", value: data.distanceFromEarthFormatted, color: .blue)
-                        StatBlock(label: "FROM MOON", value: data.distanceFromMoonFormatted, color: .gray)
-                        StatBlock(label: "SPEED", value: MissionData.speedContext(kmPerSec: data.speedKmS), color: .orange)
-                        StatBlock(label: "SIGNAL DELAY", value: data.signalDelayFormatted, color: .cyan)
-                        StatBlock(label: "PHASE", value: data.missionPhase, color: .green)
+            // Right sidebar with all mission data
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    // MET + Progress
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("ARTEMIS II")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Text(viewModel.met)
+                            .font(.system(size: 18, weight: .bold, design: .monospaced))
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(.quaternary).frame(height: 4)
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(LinearGradient(colors: [.blue, .cyan, .green],
+                                                         startPoint: .leading, endPoint: .trailing))
+                                    .frame(width: max(3, geo.size.width * viewModel.missionProgress), height: 4)
+                            }
+                        }
+                        .frame(height: 4)
+                        Text(String(format: "Mission %.1f%% complete", viewModel.missionProgress * 100))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.tertiary)
                     }
 
-                    Spacer()
+                    Divider()
+
+                    if let data = viewModel.latestData {
+                        // Telemetry
+                        Group {
+                            StatBlock(label: "FROM EARTH", value: data.distanceFromEarthFormatted, color: .blue)
+                            StatBlock(label: "FROM MOON", value: data.distanceFromMoonFormatted, color: .gray)
+                            StatBlock(label: "SPEED", value: MissionData.speedContext(kmPerSec: data.speedKmS), color: .orange)
+                            StatBlock(label: "SIGNAL DELAY", value: data.signalDelayFormatted, color: .cyan)
+                            StatBlock(label: "RANGE RATE", value: String(format: "%+.2f km/s", data.rangeRateKmS),
+                                      color: data.rangeRateKmS > 0 ? .red : .green)
+                            StatBlock(label: "PHASE", value: data.missionPhase, color: .green)
+                        }
+
+                        Divider()
+
+                        // Position
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("POSITION (km)")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                            Text("X: \(String(format: "%.1f", data.positionKm.x))")
+                                .font(.system(size: 10, design: .monospaced))
+                            Text("Y: \(String(format: "%.1f", data.positionKm.y))")
+                                .font(.system(size: 10, design: .monospaced))
+                            Text("Z: \(String(format: "%.1f", data.positionKm.z))")
+                                .font(.system(size: 10, design: .monospaced))
+                        }
+                        .foregroundStyle(.secondary)
+
+                        Divider()
+
+                        // Crew
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("CREW")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                            ForEach(MissionData.crew, id: \.name) { member in
+                                HStack(spacing: 6) {
+                                    Text(member.flag).font(.system(size: 12))
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        Text(member.name)
+                                            .font(.system(size: 10, weight: .medium))
+                                        Text("\(member.role) · \(member.agency)")
+                                            .font(.system(size: 8))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+
+                        Divider()
+
+                        // Timeline
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("TIMELINE")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+
+                            ForEach(MissionData.timeline, id: \.title) { event in
+                                HStack(spacing: 6) {
+                                    Image(systemName: event.isPast ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(event.isPast ? .green : .secondary)
+                                    Text(event.title)
+                                        .font(.system(size: 9, weight: event.isPast ? .regular : .medium))
+                                        .foregroundStyle(event.isPast ? .secondary : .primary)
+                                }
+                            }
+                        }
+                    } else {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
+                    }
+
+                    Divider()
 
                     // Legend
                     VStack(alignment: .leading, spacing: 4) {
@@ -192,8 +217,6 @@ struct SceneWindowView: View {
                         LegendRow(color: .green, label: "Planned trajectory")
                         LegendRow(color: .gray, label: "Moon orbit")
                     }
-
-                    Divider()
 
                     // Reset + Live
                     HStack {
@@ -212,14 +235,10 @@ struct SceneWindowView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                } else {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
                 }
+                .padding()
             }
-            .padding()
-            .frame(width: 190)
+            .frame(width: 220)
             .background(.ultraThinMaterial)
         }
     }
@@ -252,7 +271,7 @@ struct StatBlock: View {
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .foregroundStyle(color.opacity(0.8))
             Text(value)
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
         }
     }
 }
