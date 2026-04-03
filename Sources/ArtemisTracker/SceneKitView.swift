@@ -320,34 +320,31 @@ struct TrajectorySceneView: NSViewRepresentable {
             let count = points.count
             guard count >= 2 else { return }
 
+            // Split past (solid green) vs future (dashed cyan)
+            let progress = MissionData.missionProgress()
+            let currentIndex = Int(Double(count) * progress)
+
             let step = max(1, count / 400)
             var i = step
             while i < count {
                 let start = points[i - step]
                 let end = points[i]
-                let t = Float(i) / Float(count)
 
-                let color: NSColor
-                if t < 0.5 {
-                    let u = t * 2
-                    color = NSColor(
-                        red: CGFloat(0.1 + 0.5 * u),
-                        green: CGFloat(0.9),
-                        blue: CGFloat(0.1 + 0.5 * u),
-                        alpha: CGFloat(0.5 + 0.3 * u)
-                    )
+                if i <= currentIndex {
+                    // Past: solid bright green
+                    let seg = makeLine(from: start, to: end,
+                                       color: NSColor(red: 0.2, green: 0.9, blue: 0.3, alpha: 0.85),
+                                       radius: 0.1)
+                    trajectoryNode.addChildNode(seg)
                 } else {
-                    let u = (t - 0.5) * 2
-                    color = NSColor(
-                        red: CGFloat(0.6 - 0.4 * u),
-                        green: CGFloat(0.9),
-                        blue: CGFloat(0.6 + 0.4 * u),
-                        alpha: CGFloat(0.6 + 0.3 * u)
-                    )
+                    // Future: dashed cyan (skip every other segment)
+                    if (i / step) % 2 == 0 {
+                        let seg = makeLine(from: start, to: end,
+                                           color: NSColor(red: 0.3, green: 0.7, blue: 0.9, alpha: 0.35),
+                                           radius: 0.06)
+                        trajectoryNode.addChildNode(seg)
+                    }
                 }
-
-                let seg = makeLine(from: start, to: end, color: color, radius: 0.1)
-                trajectoryNode.addChildNode(seg)
                 i += step
             }
 
@@ -379,7 +376,7 @@ struct TrajectorySceneView: NSViewRepresentable {
                 let start = points[i - step]
                 let end = points[i]
                 if (i / step) % 3 != 0 {
-                    let seg = makeLine(from: start, to: end, color: NSColor(white: 0.3, alpha: 0.5), radius: 0.04)
+                    let seg = makeLine(from: start, to: end, color: NSColor(white: 0.12, alpha: 0.25), radius: 0.03)
                     orbitNode.addChildNode(seg)
                 }
                 i += step

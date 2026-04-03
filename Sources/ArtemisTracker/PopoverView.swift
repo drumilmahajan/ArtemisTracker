@@ -31,34 +31,12 @@ struct PopoverView: View {
             Divider()
 
             if let data = viewModel.latestData {
-                // Phase + progress
+                // Phase
                 HStack {
                     Label(data.missionPhase, systemImage: "location.fill")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Spacer()
-                }
-
-                // Earth -> Moon bar
-                HStack(spacing: 4) {
-                    Image(systemName: "globe.americas.fill")
-                        .foregroundStyle(.blue).font(.system(size: 10))
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(.quaternary).frame(height: 4)
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(.cyan.opacity(0.6))
-                                .frame(width: max(3, geo.size.width * data.progressToMoon), height: 4)
-                            Image(systemName: "airplane")
-                                .font(.system(size: 8))
-                                .rotationEffect(.degrees(-45))
-                                .offset(x: max(0, geo.size.width * data.progressToMoon - 6), y: -6)
-                        }
-                    }
-                    .frame(height: 14)
-                    Image(systemName: "moon.fill")
-                        .foregroundStyle(.gray).font(.system(size: 10))
                 }
 
                 // Core telemetry
