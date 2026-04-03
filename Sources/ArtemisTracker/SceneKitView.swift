@@ -379,27 +379,30 @@ struct TrajectorySceneView: NSViewRepresentable {
         }
 
         private func frameCamera(moonPos: SCNVector3, craftPos: SCNVector3) {
-            // Center on all three objects: Earth (0,0,0), Moon, Artemis
-            let cx = (moonPos.x + craftPos.x) / 3
-            let cz = (moonPos.z + craftPos.z) / 3
-
-            // Find the max extent so everything fits
+            // Data is in X-Y ecliptic plane (Z is small).
+            // Camera looks down the Z axis to see X-Y as the flat plane.
             let allPoints = [SCNVector3Zero, moonPos, craftPos]
-            var maxExtent: Float = 20
+
+            // Find center and extent in X-Y
+            var sumX: Float = 0, sumY: Float = 0
+            for p in allPoints { sumX += Float(p.x); sumY += Float(p.y) }
+            let cx = sumX / Float(allPoints.count)
+            let cy = sumY / Float(allPoints.count)
+
+            var maxExtent: Float = 10
             for p in allPoints {
-                let dx = Float(abs(p.x - CGFloat(cx)))
-                let dz = Float(abs(p.z - CGFloat(cz)))
-                maxExtent = max(maxExtent, max(dx, dz))
+                let dx = abs(Float(p.x) - cx)
+                let dy = abs(Float(p.y) - cy)
+                maxExtent = max(maxExtent, max(dx, dy))
             }
 
-            // Camera height for orthographic-like top-down view
-            let camHeight: Float = maxExtent * 3.0 + 20
+            // Camera on Z axis looking down, with padding
+            let camDist: Float = maxExtent * 2.0 + 10
 
             SCNTransaction.begin()
             SCNTransaction.animationDuration = 0.3
-            // Strictly top-down: camera on Y axis looking straight down
-            cameraNode.position = SCNVector3(CGFloat(cx), CGFloat(camHeight), CGFloat(cz))
-            cameraNode.eulerAngles = SCNVector3(-CGFloat.pi / 2, 0, 0) // Look straight down
+            cameraNode.position = SCNVector3(CGFloat(cx), CGFloat(cy), CGFloat(camDist))
+            cameraNode.look(at: SCNVector3(CGFloat(cx), CGFloat(cy), 0))
             SCNTransaction.commit()
         }
 
