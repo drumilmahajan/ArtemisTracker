@@ -11,19 +11,10 @@ struct TrajectorySceneView: NSViewRepresentable {
         let scnView = SCNView()
         scnView.scene = context.coordinator.scene
         scnView.backgroundColor = .black
-        scnView.allowsCameraControl = true
+        scnView.allowsCameraControl = false  // Fixed top-down view
         scnView.autoenablesDefaultLighting = false
         scnView.antialiasingMode = .multisampling4X
         scnView.pointOfView = context.coordinator.cameraNode
-
-        // Configure trackpad camera controls:
-        // - Two finger drag = rotate (orbit)
-        // - Pinch = zoom
-        // - Two finger pan (with option key) = pan/change center
-        let cameraController = scnView.defaultCameraController
-        cameraController.interactionMode = .orbitTurntable
-        cameraController.inertiaEnabled = true
-        cameraController.maximumVerticalAngle = 89
 
         context.coordinator.scnView = scnView
         return scnView
@@ -296,10 +287,8 @@ struct TrajectorySceneView: NSViewRepresentable {
             lastMoonPos = moonPos
             lastCraftPos = artPos
 
-            if !hasInitializedCamera {
-                hasInitializedCamera = true
-                frameCamera(moonPos: moonPos, craftPos: artPos)
-            }
+            // Always keep camera framed on all objects (fixed top-down)
+            frameCamera(moonPos: moonPos, craftPos: artPos)
         }
 
         // MARK: - Trajectory Drawing
@@ -351,9 +340,7 @@ struct TrajectorySceneView: NSViewRepresentable {
             scene.rootNode.addChildNode(trajectoryNode)
 
             // Re-frame camera if trajectory is larger than what we see
-            if hasInitializedCamera, let first = points.first, let last = points.last {
-                frameCameraForTrajectory(points: [first, last, SCNVector3Zero])
-            }
+            // Camera will auto-frame on next position update
         }
 
         func drawMoonOrbit(_ positions: [(x: Double, y: Double, z: Double)], scale: Double) {
@@ -376,7 +363,7 @@ struct TrajectorySceneView: NSViewRepresentable {
                 let start = points[i - step]
                 let end = points[i]
                 if (i / step) % 3 != 0 {
-                    let seg = makeLine(from: start, to: end, color: NSColor(white: 0.12, alpha: 0.25), radius: 0.03)
+                    let seg = makeLine(from: start, to: end, color: NSColor(white: 0.25, alpha: 0.35), radius: 0.04)
                     orbitNode.addChildNode(seg)
                 }
                 i += step
@@ -392,25 +379,28 @@ struct TrajectorySceneView: NSViewRepresentable {
         }
 
         private func frameCamera(moonPos: SCNVector3, craftPos: SCNVector3) {
-            let cx = (moonPos.x + craftPos.x) / 2
-            let cy = (moonPos.y + craftPos.y) / 2
-            let cz = (moonPos.z + craftPos.z) / 2
-            let center = SCNVector3(cx, cy, cz)
+            // Center on all three objects: Earth (0,0,0), Moon, Artemis
+            let cx = (moonPos.x + craftPos.x) / 3
+            let cz = (moonPos.z + craftPos.z) / 3
 
-            let dists = [SCNVector3Zero, moonPos, craftPos].map { p in
-                sqrt(pow(p.x - cx, 2) + pow(p.y - cy, 2) + pow(p.z - cz, 2))
+            // Find the max extent so everything fits
+            let allPoints = [SCNVector3Zero, moonPos, craftPos]
+            var maxExtent: Float = 20
+            for p in allPoints {
+                let dx = Float(abs(p.x - CGFloat(cx)))
+                let dz = Float(abs(p.z - CGFloat(cz)))
+                maxExtent = max(maxExtent, max(dx, dz))
             }
-            let maxDist = dists.max() ?? 20
-            let camDist = maxDist * 2.5 + 15
+
+            // Camera height for orthographic-like top-down view
+            let camHeight: Float = maxExtent * 3.0 + 20
 
             SCNTransaction.begin()
-            SCNTransaction.animationDuration = 1.0
-            // Top-down view: camera above looking down (Y-up)
-            cameraNode.position = SCNVector3(cx, cy + camDist, cz + camDist * 0.1)
-            cameraNode.look(at: center)
+            SCNTransaction.animationDuration = 0.3
+            // Strictly top-down: camera on Y axis looking straight down
+            cameraNode.position = SCNVector3(CGFloat(cx), CGFloat(camHeight), CGFloat(cz))
+            cameraNode.eulerAngles = SCNVector3(-CGFloat.pi / 2, 0, 0) // Look straight down
             SCNTransaction.commit()
-
-            scnView?.defaultCameraController.target = center
         }
 
         private func frameCameraForTrajectory(points: [SCNVector3]) {

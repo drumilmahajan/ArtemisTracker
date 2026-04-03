@@ -218,22 +218,11 @@ struct SceneWindowView: View {
                         LegendRow(color: .gray, label: "Moon orbit")
                     }
 
-                    // Reset + Live
-                    HStack {
-                        Button(action: { resetTrigger += 1 }) {
-                            Label("Reset View", systemImage: "arrow.counterclockwise")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.bordered)
-
-                        Spacer()
-
-                        HStack(spacing: 4) {
-                            Circle().fill(.green).frame(width: 6, height: 6)
-                            Text("Live")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+                    HStack(spacing: 4) {
+                        Circle().fill(.green).frame(width: 6, height: 6)
+                        Text("Live")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .padding()
