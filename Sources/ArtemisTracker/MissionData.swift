@@ -51,50 +51,50 @@ enum MissionData {
 
     }
 
-    private static func utc(_ y: Int, _ m: Int, _ d: Int, _ h: Int, _ min: Int) -> Date {
+    static func utcDate(_ y: Int, _ m: Int, _ d: Int, _ h: Int, _ min: Int) -> Date {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         return cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: min))!
     }
 
     static let timeline: [MissionEvent] = [
-        MissionEvent(date: utc(2026, 4, 1, 22, 35), title: "Liftoff",
+        MissionEvent(date: utcDate(2026, 4, 1, 22, 35), title: "Liftoff",
                      detail: "SLS launches from LC-39B, Kennedy Space Center"),
-        MissionEvent(date: utc(2026, 4, 1, 22, 37), title: "SRB Separation",
+        MissionEvent(date: utcDate(2026, 4, 1, 22, 37), title: "SRB Separation",
                      detail: "Solid rocket boosters separate at ~48 km altitude"),
-        MissionEvent(date: utc(2026, 4, 1, 22, 43), title: "Main Engine Cutoff",
+        MissionEvent(date: utcDate(2026, 4, 1, 22, 43), title: "Main Engine Cutoff",
                      detail: "Core stage separates, ICPS takes over"),
-        MissionEvent(date: utc(2026, 4, 1, 22, 55), title: "Solar Arrays Deployed",
+        MissionEvent(date: utcDate(2026, 4, 1, 22, 55), title: "Solar Arrays Deployed",
                      detail: "Orion deploys 4 solar array wings"),
-        MissionEvent(date: utc(2026, 4, 2, 0, 23), title: "Apogee Raise Burn",
+        MissionEvent(date: utcDate(2026, 4, 2, 0, 23), title: "Apogee Raise Burn",
                      detail: "ICPS raises orbit to high elliptical"),
-        MissionEvent(date: utc(2026, 4, 2, 1, 59), title: "Orion/ICPS Separation",
+        MissionEvent(date: utcDate(2026, 4, 2, 1, 59), title: "Orion/ICPS Separation",
                      detail: "Orion separates from upper stage"),
-        MissionEvent(date: utc(2026, 4, 2, 12, 19), title: "Perigee Raise Burn",
+        MissionEvent(date: utcDate(2026, 4, 2, 12, 19), title: "Perigee Raise Burn",
                      detail: "Orion main engine, 43 seconds"),
-        MissionEvent(date: utc(2026, 4, 2, 23, 49), title: "Translunar Injection",
+        MissionEvent(date: utcDate(2026, 4, 2, 23, 49), title: "Translunar Injection",
                      detail: "5m 50s burn, delta-V ~388 m/s — on course to Moon"),
-        MissionEvent(date: utc(2026, 4, 3, 22, 43), title: "Trajectory Correction #1",
+        MissionEvent(date: utcDate(2026, 4, 3, 22, 43), title: "Trajectory Correction #1",
                      detail: "First outbound course correction"),
-        MissionEvent(date: utc(2026, 4, 4, 23, 43), title: "Trajectory Correction #2",
+        MissionEvent(date: utcDate(2026, 4, 4, 23, 43), title: "Trajectory Correction #2",
                      detail: "Second outbound course correction"),
-        MissionEvent(date: utc(2026, 4, 6, 3, 4), title: "Trajectory Correction #3",
+        MissionEvent(date: utcDate(2026, 4, 6, 3, 4), title: "Trajectory Correction #3",
                      detail: "Final correction before lunar flyby"),
-        MissionEvent(date: utc(2026, 4, 6, 4, 43), title: "Enter Lunar SOI",
+        MissionEvent(date: utcDate(2026, 4, 6, 4, 43), title: "Enter Lunar SOI",
                      detail: "Orion enters Moon's sphere of influence"),
-        MissionEvent(date: utc(2026, 4, 6, 23, 6), title: "Closest Lunar Approach",
+        MissionEvent(date: utcDate(2026, 4, 6, 23, 6), title: "Closest Lunar Approach",
                      detail: "~8,900 km from Moon's far side — closest to Moon"),
-        MissionEvent(date: utc(2026, 4, 6, 23, 9), title: "Max Distance from Earth",
+        MissionEvent(date: utcDate(2026, 4, 6, 23, 9), title: "Max Distance from Earth",
                      detail: "~407,000 km — farthest humans have ever traveled"),
-        MissionEvent(date: utc(2026, 4, 7, 17, 27), title: "Exit Lunar SOI",
+        MissionEvent(date: utcDate(2026, 4, 7, 17, 27), title: "Exit Lunar SOI",
                      detail: "Orion leaves Moon's gravitational influence"),
-        MissionEvent(date: utc(2026, 4, 8, 0, 4), title: "Return Correction #1",
+        MissionEvent(date: utcDate(2026, 4, 8, 0, 4), title: "Return Correction #1",
                      detail: "First return trajectory correction"),
-        MissionEvent(date: utc(2026, 4, 10, 0, 0), title: "Final Correction Burn",
+        MissionEvent(date: utcDate(2026, 4, 10, 0, 0), title: "Final Correction Burn",
                      detail: "Last trajectory adjustment before reentry"),
-        MissionEvent(date: utc(2026, 4, 11, 0, 0), title: "Service Module Separation",
+        MissionEvent(date: utcDate(2026, 4, 11, 0, 0), title: "Service Module Separation",
                      detail: "Crew module separates for reentry"),
-        MissionEvent(date: utc(2026, 4, 11, 0, 6), title: "Splashdown",
+        MissionEvent(date: utcDate(2026, 4, 11, 0, 6), title: "Splashdown",
                      detail: "Pacific Ocean, off San Diego coast"),
     ]
 

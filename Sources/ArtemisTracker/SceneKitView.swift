@@ -317,9 +317,14 @@ struct TrajectorySceneView: NSViewRepresentable {
             let count = points.count
             guard count >= 2 else { return }
 
-            // Split past (solid green) vs future (dashed cyan)
-            let progress = MissionData.missionProgress()
-            let currentIndex = Int(Double(count) * progress)
+            // Split past vs future based on trajectory data window
+            // Trajectory data: Apr 2 03:00 to Apr 10 23:00 UTC
+            let trajStart = MissionData.utcDate(2026, 4, 2, 3, 0)
+            let trajEnd = MissionData.utcDate(2026, 4, 10, 23, 0)
+            let elapsed = Date().timeIntervalSince(trajStart)
+            let trajDuration = trajEnd.timeIntervalSince(trajStart)
+            let trajProgress = max(0, min(1, elapsed / trajDuration))
+            let currentIndex = Int(Double(count) * trajProgress)
 
             let step = max(1, count / 400)
             var i = step
@@ -365,13 +370,18 @@ struct TrajectorySceneView: NSViewRepresentable {
 
             guard points.count >= 2 else { return }
 
-            let step = max(1, points.count / 200)
+            // Dotted: skip every other segment, bright enough to see
+            let step = max(1, points.count / 300)
             var i = step
             while i < points.count {
-                let start = points[i - step]
-                let end = points[i]
-                let seg = makeLine(from: start, to: end, color: NSColor(white: 0.5, alpha: 0.7), radius: 0.06)
-                orbitNode.addChildNode(seg)
+                if (i / step) % 2 == 0 {
+                    let start = points[i - step]
+                    let end = points[i]
+                    let seg = makeLine(from: start, to: end,
+                                       color: NSColor(white: 0.55, alpha: 0.7),
+                                       radius: 0.05)
+                    orbitNode.addChildNode(seg)
+                }
                 i += step
             }
 

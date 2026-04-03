@@ -55,14 +55,14 @@ struct HorizonsAPI {
         return vectors.map { (x: $0.x, y: $0.y, z: $0.z) }
     }
 
-    /// Fetches Moon positions over the mission window
+    /// Fetches Moon positions for a full orbit (~28 days) so the complete circle is visible
     func fetchMoonOrbit() async throws -> [(x: Double, y: Double, z: Double)] {
         let vectors = try await fetchVectors(
             target: moonID,
             center: "500@399",
-            start: missionStart,
-            stop: missionEnd,
-            step: "2 h"
+            start: "2026-03-25",
+            stop: "2026-04-22",
+            step: "4 h"
         )
         return vectors.map { (x: $0.x, y: $0.y, z: $0.z) }
     }
