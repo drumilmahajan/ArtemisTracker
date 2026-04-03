@@ -23,7 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: 28)
 
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "moon.stars.fill", accessibilityDescription: "Artemis Tracker")
@@ -43,14 +43,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         viewModel.startTracking()
-
-        // Update menu bar title
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async {
-                guard let self = self, let data = self.viewModel.latestData else { return }
-                self.statusItem.button?.title = " \(data.distanceFromEarthFormatted)"
-            }
-        }
     }
 
     @objc func togglePopover() {

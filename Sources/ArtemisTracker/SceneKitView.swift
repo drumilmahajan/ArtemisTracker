@@ -15,6 +15,17 @@ struct TrajectorySceneView: NSViewRepresentable {
         scnView.autoenablesDefaultLighting = false
         scnView.antialiasingMode = .multisampling4X
         scnView.pointOfView = context.coordinator.cameraNode
+
+        // Configure trackpad camera controls:
+        // - Two finger drag = rotate (orbit)
+        // - Pinch = zoom
+        // - Two finger pan (with option key) = pan/change center
+        let cameraController = scnView.defaultCameraController
+        cameraController.interactionMode = .orbitTurntable
+        cameraController.inertiaEnabled = true
+        cameraController.maximumVerticalAngle = 89
+
+        context.coordinator.scnView = scnView
         return scnView
     }
 
@@ -55,6 +66,7 @@ struct TrajectorySceneView: NSViewRepresentable {
         var hasDrawnTrajectory = false
         var hasDrawnMoonOrbit = false
         var lastResetTrigger = 0
+        weak var scnView: SCNView?
 
         private let scaleFactor: Double
         private let earthDisplayRadius: CGFloat = 2.0
@@ -399,6 +411,9 @@ struct TrajectorySceneView: NSViewRepresentable {
             cameraNode.position = SCNVector3(cx + camDist * 0.2, cy + camDist * 0.6, cz + camDist * 0.7)
             cameraNode.look(at: center)
             SCNTransaction.commit()
+
+            // Update orbit center so trackpad rotation orbits around the scene center
+            scnView?.defaultCameraController.target = center
         }
 
         private func frameCameraForTrajectory(points: [SCNVector3]) {

@@ -6,10 +6,13 @@ A macOS menu bar app that tracks NASA's Artemis II mission to the Moon in real-t
 
 ## Features
 
-- **Menu bar icon** showing live distance from Earth
-- **Detailed popover** with distance from Earth/Moon, speed, mission phase, position vectors, and a visual Earth-to-Moon progress bar
-- **Floating overlay** — compact always-on-top panel showing key stats at the top of your screen
-- Auto-refreshes every 5 minutes from JPL Horizons API
+- **Menu bar icon** — click to see live mission data
+- **Live position interpolation** — API fetches every 30s, position updates 10x/sec using velocity vectors
+- **Detailed popover** with distance from Earth/Moon, speed, mission phase, and Earth-to-Moon progress bar
+- **3D trajectory view** — SceneKit visualization with Earth, Moon, spacecraft model, planned trajectory path, and Moon orbit
+- **Floating overlay** — compact always-on-top panel with key stats, visible across all spaces
+- **Trackpad controls** — two-finger rotate, pinch zoom, Option+drag to pan in 3D view
+- **Reset View** button to re-center the camera when lost in space
 
 ## Requirements
 
@@ -34,20 +37,26 @@ swift build -c release
 
 ## Usage
 
-1. After launching, a **moon icon** appears in your menu bar along with the current distance from Earth
-2. **Click the icon** to open the popover with full mission details:
-   - Distance from Earth and Moon
-   - Current speed
-   - Mission phase (Near Earth, Outbound Transit, Lunar Approach, etc.)
+1. After launching, a **moon icon** appears in your menu bar
+2. **Click the icon** to open the popover with:
+   - Distance from Earth and Moon (live)
+   - Current speed and mission phase
    - Earth-to-Moon progress bar
-   - J2000 Earth-centered position coordinates
-3. Click **Floating Overlay** to pin a compact tracker to the top of your screen — it stays visible across all spaces and apps
-4. Click **Refresh** to manually fetch the latest data
+   - Mini 3D trajectory preview
+3. Click **3D View** to open a full window with:
+   - Earth, Moon, and Artemis spacecraft (3D model with solar panels)
+   - Full planned mission trajectory (green/cyan path)
+   - Moon's orbital path (dashed gray)
+   - Stats sidebar with live telemetry
+   - Reset View button to re-center camera
+4. Click **Overlay** for a compact floating tracker pinned to the top of your screen
 5. Click **Quit** to exit
 
-## Data Source
+## How It Works
 
-Position data comes from [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) — spacecraft ID `-1024` (Artemis II Orion). The API provides Earth-centered J2000 state vectors which are used to compute distances and velocity.
+Position data comes from [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) (spacecraft ID `-1024`). The app fetches Earth-centered state vectors every 30 seconds and interpolates between fetches using the velocity vector for smooth real-time updates. The full planned trajectory is fetched once on startup.
+
+Includes automatic retry with backoff for transient API errors (503s).
 
 ## License
 

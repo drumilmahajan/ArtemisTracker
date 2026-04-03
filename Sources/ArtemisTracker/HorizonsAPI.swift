@@ -34,47 +34,32 @@ struct HorizonsAPI {
     }
 
     /// Fetches the full planned trajectory for Artemis II (positions only)
-    /// Tries to get data from mission start through end (~10 day mission)
+    // Artemis II launched April 1, 2026 22:35 UTC. Horizons data starts ~3.5h after.
+    // Mission is ~10 days.
+    private let missionStart = "2026-04-02 03:00"
+    private let missionEnd = "2026-04-10 23:00"
+
+    /// Fetches full planned trajectory for Artemis II
     func fetchFullTrajectory() async throws -> [(x: Double, y: Double, z: Double)] {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-
-        // Artemis II is ~10 days. Fetch from 5 days before now to 10 days after.
-        // Horizons will return whatever data is available in that window.
-        let now = Date()
-        let start = formatter.string(from: now.addingTimeInterval(-5 * 86400))
-        let stop = formatter.string(from: now.addingTimeInterval(10 * 86400))
-
         let vectors = try await fetchVectors(
             target: artemisID,
             center: "500@399",
-            start: start,
-            stop: stop,
-            step: "1 h"  // 1-hour steps for the full trajectory
+            start: missionStart,
+            stop: missionEnd,
+            step: "1 h"
         )
-
         return vectors.map { (x: $0.x, y: $0.y, z: $0.z) }
     }
 
-    /// Fetches Moon positions over the mission window for its orbit path
+    /// Fetches Moon positions over the mission window
     func fetchMoonOrbit() async throws -> [(x: Double, y: Double, z: Double)] {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-
-        let now = Date()
-        let start = formatter.string(from: now.addingTimeInterval(-5 * 86400))
-        let stop = formatter.string(from: now.addingTimeInterval(10 * 86400))
-
         let vectors = try await fetchVectors(
             target: moonID,
             center: "500@399",
-            start: start,
-            stop: stop,
+            start: missionStart,
+            stop: missionEnd,
             step: "2 h"
         )
-
         return vectors.map { (x: $0.x, y: $0.y, z: $0.z) }
     }
 
@@ -84,36 +69,59 @@ struct HorizonsAPI {
     }
 
     private func fetchVectors(target: String, center: String, start: String, stop: String, step: String) async throws -> [StateVector] {
-        var components = URLComponents(string: baseURL)!
-        components.queryItems = [
-            URLQueryItem(name: "format", value: "text"),
-            URLQueryItem(name: "COMMAND", value: "'\(target)'"),
-            URLQueryItem(name: "EPHEM_TYPE", value: "'VECTORS'"),
-            URLQueryItem(name: "CENTER", value: "'\(center)'"),
-            URLQueryItem(name: "START_TIME", value: "'\(start)'"),
-            URLQueryItem(name: "STOP_TIME", value: "'\(stop)'"),
-            URLQueryItem(name: "STEP_SIZE", value: "'\(step)'"),
-            URLQueryItem(name: "OUT_UNITS", value: "'KM-S'"),
-            URLQueryItem(name: "REF_SYSTEM", value: "'ICRF'"),
-            URLQueryItem(name: "VEC_TABLE", value: "'3'"),
-            URLQueryItem(name: "CSV_FORMAT", value: "'YES'"),
-        ]
+        // Build URL string manually to avoid encoding issues
+        let startEnc = start.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? start
+        let stopEnc = stop.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? stop
+        let stepEnc = step.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? step
 
-        guard let url = components.url else {
+        let urlString = "\(baseURL)?format=text"
+            + "&COMMAND='\(target)'"
+            + "&EPHEM_TYPE='VECTORS'"
+            + "&CENTER='\(center)'"
+            + "&START_TIME='\(startEnc)'"
+            + "&STOP_TIME='\(stopEnc)'"
+            + "&STEP_SIZE='\(stepEnc)'"
+            + "&OUT_UNITS='KM-S'"
+            + "&REF_SYSTEM='ICRF'"
+            + "&VEC_TABLE='3'"
+            + "&CSV_FORMAT='YES'"
+
+        guard let url = URL(string: urlString) else {
             throw TrackerError.invalidURL
         }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        // Retry up to 3 times with backoff for transient errors (503, timeouts)
+        var lastError: Error?
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                try await Task.sleep(nanoseconds: UInt64(attempt) * 3_000_000_000) // 3s, 6s
+            }
+            do {
+                let (data, response) = try await URLSession.shared.data(from: url)
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw TrackerError.apiError("HTTP error")
+                if let httpResponse = response as? HTTPURLResponse {
+                    if httpResponse.statusCode == 200 {
+                        guard let text = String(data: data, encoding: .utf8) else {
+                            throw TrackerError.parseError("Could not decode response")
+                        }
+                        return try parseVectors(from: text)
+                    }
+                    // Retry on 503/429/5xx
+                    if httpResponse.statusCode >= 500 || httpResponse.statusCode == 429 {
+                        lastError = TrackerError.apiError("Server busy (HTTP \(httpResponse.statusCode)), retrying...")
+                        continue
+                    }
+                    let body = String(data: data, encoding: .utf8) ?? ""
+                    throw TrackerError.apiError("HTTP \(httpResponse.statusCode): \(body.prefix(200))")
+                }
+            } catch let error as TrackerError {
+                throw error // Don't retry our own parse errors
+            } catch {
+                lastError = error
+                continue // Retry network errors
+            }
         }
-
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw TrackerError.parseError("Could not decode response")
-        }
-
-        return try parseVectors(from: text)
+        throw lastError ?? TrackerError.apiError("Failed after 3 retries")
     }
 
     private func parseVectors(from text: String) throws -> [StateVector] {

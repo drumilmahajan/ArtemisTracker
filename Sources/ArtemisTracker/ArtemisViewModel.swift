@@ -121,16 +121,23 @@ class ArtemisViewModel: ObservableObject {
 
     /// Fetch the full mission trajectory once (past + future)
     private func fetchTrajectory() {
+        // Fetch trajectory and moon orbit independently so one failure doesn't block the other
         Task {
             do {
-                async let trajectory = horizonsAPI.fetchFullTrajectory()
-                async let orbit = horizonsAPI.fetchMoonOrbit()
-                let (traj, orb) = try await (trajectory, orbit)
+                let traj = try await horizonsAPI.fetchFullTrajectory()
                 self.plannedTrajectory = traj
-                self.moonOrbit = orb
+                print("Loaded \(traj.count) trajectory points")
             } catch {
-                // Non-fatal — 3D view just won't show the planned path
                 print("Could not fetch trajectory: \(error)")
+            }
+        }
+        Task {
+            do {
+                let orb = try await horizonsAPI.fetchMoonOrbit()
+                self.moonOrbit = orb
+                print("Loaded \(orb.count) moon orbit points")
+            } catch {
+                print("Could not fetch moon orbit: \(error)")
             }
         }
     }
