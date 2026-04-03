@@ -73,7 +73,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         window.contentView = hostingView
-        window.title = "Artemis II - 3D Trajectory"
+        window.title = "Orion · Artemis II - 3D Trajectory"
         window.isReleasedWhenClosed = false
         window.center()
         window.makeKeyAndOrderFront(nil)
@@ -110,7 +110,7 @@ struct SceneWindowView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     // MET + Progress
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("ARTEMIS II")
+                        Text("ORION · ARTEMIS II")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundStyle(.secondary)
                         Text(viewModel.met)
@@ -134,13 +134,28 @@ struct SceneWindowView: View {
                     Divider()
 
                     if let data = viewModel.latestData {
+                        // Unit toggle
+                        HStack {
+                            Spacer()
+                            Picker("", selection: Binding(
+                                get: { viewModel.units },
+                                set: { viewModel.unitSystem = $0.rawValue }
+                            )) {
+                                Text("km").tag(UnitSystem.metric)
+                                Text("mi").tag(UnitSystem.imperial)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 100)
+                            Spacer()
+                        }
+
                         // Telemetry
                         Group {
-                            StatBlock(label: "FROM EARTH", value: data.distanceFromEarthFormatted, color: .blue)
-                            StatBlock(label: "FROM MOON", value: data.distanceFromMoonFormatted, color: .gray)
-                            StatBlock(label: "SPEED", value: MissionData.speedContext(kmPerSec: data.speedKmS), color: .orange)
+                            StatBlock(label: "FROM EARTH", value: viewModel.units.formatDistance(data.distanceFromEarthKm), color: .blue)
+                            StatBlock(label: "FROM MOON", value: viewModel.units.formatDistance(data.distanceFromMoonKm), color: .gray)
+                            StatBlock(label: "SPEED", value: viewModel.units.formatSpeed(data.speedKmS), color: .orange)
                             StatBlock(label: "SIGNAL DELAY", value: data.signalDelayFormatted, color: .cyan)
-                            StatBlock(label: "RANGE RATE", value: String(format: "%+.2f km/s", data.rangeRateKmS),
+                            StatBlock(label: "RANGE RATE", value: viewModel.units.formatVelocity(data.rangeRateKmS),
                                       color: data.rangeRateKmS > 0 ? .red : .green)
                             StatBlock(label: "PHASE", value: data.missionPhase, color: .green)
                         }
@@ -149,14 +164,14 @@ struct SceneWindowView: View {
 
                         // Position
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("POSITION (km)")
+                            Text("POSITION (\(viewModel.units.distanceUnit))")
                                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                                 .foregroundStyle(.tertiary)
-                            Text("X: \(String(format: "%.1f", data.positionKm.x))")
+                            Text("X: \(viewModel.units.formatPosition(data.positionKm.x))")
                                 .font(.system(size: 10, design: .monospaced))
-                            Text("Y: \(String(format: "%.1f", data.positionKm.y))")
+                            Text("Y: \(viewModel.units.formatPosition(data.positionKm.y))")
                                 .font(.system(size: 10, design: .monospaced))
-                            Text("Z: \(String(format: "%.1f", data.positionKm.z))")
+                            Text("Z: \(viewModel.units.formatPosition(data.positionKm.z))")
                                 .font(.system(size: 10, design: .monospaced))
                         }
                         .foregroundStyle(.secondary)

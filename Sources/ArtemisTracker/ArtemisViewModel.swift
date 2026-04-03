@@ -1,6 +1,50 @@
 import Foundation
 import SwiftUI
 
+enum UnitSystem: String, CaseIterable {
+    case metric = "metric"
+    case imperial = "imperial"
+
+    var distanceUnit: String { self == .metric ? "km" : "mi" }
+    var speedUnit: String { self == .metric ? "km/h" : "mph" }
+    var velocityUnit: String { self == .metric ? "km/s" : "mi/s" }
+    var label: String { self == .metric ? "Metric" : "Imperial" }
+
+    static let kmToMi = 0.621371
+
+    func convertDistance(_ km: Double) -> Double {
+        self == .metric ? km : km * UnitSystem.kmToMi
+    }
+
+    func formatDistance(_ km: Double) -> String {
+        let val = convertDistance(km)
+        let unit = distanceUnit
+        if val > 1_000_000 {
+            return String(format: "%.1fM %@", val / 1_000_000, unit)
+        }
+        return String(format: "%.0f %@", val, unit)
+    }
+
+    func formatSpeed(_ kmPerSec: Double) -> String {
+        let perHour = convertDistance(kmPerSec * 3600)
+        let mach = kmPerSec / 0.343
+        if mach > 1 {
+            return String(format: "Mach %.0f (%.0f %@)", mach, perHour, speedUnit)
+        }
+        return String(format: "%.0f %@", perHour, speedUnit)
+    }
+
+    func formatVelocity(_ kmPerSec: Double) -> String {
+        let val = convertDistance(kmPerSec)
+        return String(format: "%+.2f %@", val, velocityUnit)
+    }
+
+    func formatPosition(_ km: Double) -> String {
+        let val = convertDistance(km)
+        return String(format: "%.1f", val)
+    }
+}
+
 struct ArtemisData {
     let timestamp: Date
     let positionKm: (x: Double, y: Double, z: Double)
@@ -64,6 +108,8 @@ struct ArtemisData {
 @MainActor
 class ArtemisViewModel: ObservableObject {
     @Published var latestData: ArtemisData?
+    @AppStorage("unitSystem") var unitSystem: String = UnitSystem.metric.rawValue
+    var units: UnitSystem { UnitSystem(rawValue: unitSystem) ?? .metric }
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var lastAPIFetch: Date?

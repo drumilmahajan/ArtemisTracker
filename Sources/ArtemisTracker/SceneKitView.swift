@@ -131,7 +131,7 @@ struct TrajectorySceneView: NSViewRepresentable {
             scene.rootNode.addChildNode(craftNode)
 
             // Craft label above
-            let craftLabel = Self.makeLabel("Artemis", size: 0.7)
+            let craftLabel = Self.makeLabel("Orion", size: 0.7)
             craftLabel.position = SCNVector3(0, 1.8, 0)
             craftNode.addChildNode(craftLabel)
 

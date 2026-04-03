@@ -12,7 +12,7 @@ struct PopoverView: View {
                     .font(.title2)
                     .foregroundStyle(.yellow)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Artemis II")
+                    Text("Orion · Artemis II")
                         .font(.headline)
                     Text(viewModel.met)
                         .font(.system(size: 14, weight: .bold, design: .monospaced))
@@ -42,11 +42,11 @@ struct PopoverView: View {
                 // Core telemetry
                 VStack(spacing: 6) {
                     TelemetryRow(icon: "globe.americas.fill", iconColor: .blue,
-                                 label: "From Earth", value: data.distanceFromEarthFormatted)
+                                 label: "From Earth", value: viewModel.units.formatDistance(data.distanceFromEarthKm))
                     TelemetryRow(icon: "moon.fill", iconColor: .gray,
-                                 label: "From Moon", value: data.distanceFromMoonFormatted)
+                                 label: "From Moon", value: viewModel.units.formatDistance(data.distanceFromMoonKm))
                     TelemetryRow(icon: "gauge.with.needle.fill", iconColor: .orange,
-                                 label: "Speed", value: MissionData.speedContext(kmPerSec: data.speedKmS))
+                                 label: "Speed", value: viewModel.units.formatSpeed(data.speedKmS))
                 }
 
                 Divider()
@@ -101,6 +101,16 @@ struct PopoverView: View {
                 }.buttonStyle(.bordered)
 
                 Spacer()
+
+                Picker("", selection: Binding(
+                    get: { viewModel.units },
+                    set: { viewModel.unitSystem = $0.rawValue }
+                )) {
+                    Text("km").tag(UnitSystem.metric)
+                    Text("mi").tag(UnitSystem.imperial)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 80)
 
                 Button(action: { NSApplication.shared.terminate(nil) }) {
                     Label("Quit", systemImage: "xmark.circle").font(.caption)
