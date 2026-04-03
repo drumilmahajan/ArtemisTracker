@@ -4,6 +4,10 @@ A macOS menu bar app that tracks NASA's Artemis II mission to the Moon in real-t
 
 ![macOS](https://img.shields.io/badge/macOS-13.0%2B-blue) ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Artemis Tracker Demo" width="720">
+</p>
+
 ## Features
 
 - **Menu bar icon** — click to see live mission data
