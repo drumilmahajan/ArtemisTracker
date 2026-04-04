@@ -42,7 +42,7 @@ A native macOS menu bar app that tracks NASA's Artemis II mission to the Moon in
 
 Download `ArtemisTracker.zip` from the [latest release](https://github.com/drumilmahajan/ArtemisTracker/releases), unzip, and double-click to run.
 
-> First launch: macOS may block it as "unidentified developer". Right-click the app → Open → Open to bypass.
+> First launch: macOS may show an "unidentified developer" warning. Right-click the app → **Open** → **Open** to bypass.
 
 ### Build from source
 

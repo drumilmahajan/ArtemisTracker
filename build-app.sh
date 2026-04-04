@@ -19,7 +19,14 @@ cp .build/release/ArtemisTracker "$APP_DIR/MacOS/ArtemisTracker"
 # Copy Info.plist
 cp Sources/ArtemisTracker/Info.plist "$APP_DIR/Info.plist"
 
-echo "✅ Built ArtemisTracker.app"
+# Code sign if Developer ID certificate is available
+SIGN_ID="Developer ID Application: Drumil Mahajan (69FNTL8QYK)"
+if security find-identity -v -p codesigning | grep -q "$SIGN_ID"; then
+    codesign --force --deep --options runtime --sign "$SIGN_ID" ArtemisTracker.app
+    echo "✅ Built and signed ArtemisTracker.app"
+else
+    echo "✅ Built ArtemisTracker.app (unsigned)"
+fi
 echo ""
 echo "To run: open ArtemisTracker.app"
 echo "Or:     ./ArtemisTracker.app/Contents/MacOS/ArtemisTracker"
