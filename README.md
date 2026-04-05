@@ -40,9 +40,16 @@ A native macOS menu bar app that tracks NASA's Artemis II mission to the Moon in
 
 ### Download (no tools needed)
 
-Download `ArtemisTracker.zip` from the [latest release](https://github.com/drumilmahajan/ArtemisTracker/releases), unzip, and double-click to run.
+Download `ArtemisTracker.zip` from the [latest release](https://github.com/drumilmahajan/ArtemisTracker/releases), unzip, then run in Terminal:
 
-> First launch: macOS may show an "unidentified developer" warning. Right-click the app → **Open** → **Open** to bypass.
+```bash
+sudo xattr -cr ~/Downloads/ArtemisTracker.app
+open ~/Downloads/ArtemisTracker.app
+```
+
+> macOS blocks apps that aren't notarized. The `xattr` command clears the quarantine flag so it can run. This is a built-in macOS command — no extra tools needed.
+>
+> **Note:** Apple notarization is in progress. Once approved, the `xattr` step will no longer be needed.
 
 ### Build from source
 
