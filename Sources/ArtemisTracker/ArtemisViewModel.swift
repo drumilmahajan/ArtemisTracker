@@ -80,22 +80,34 @@ struct ArtemisData {
     }
 
     var missionPhase: String {
-        let earthMoonDistance = 384_400.0
-        let ratio = distanceFromEarthKm / earthMoonDistance
-        if ratio < 0.1 {
-            return "Near Earth"
-        } else if ratio < 0.4 {
+        let now = Date()
+        let launch = MissionData.launchDate
+        let enterSOI = MissionData.utcDate(2026, 4, 6, 4, 43)
+        let closestApproach = MissionData.utcDate(2026, 4, 6, 23, 6)
+        let exitSOI = MissionData.utcDate(2026, 4, 7, 17, 27)
+        let splashdown = MissionData.splashdownDate
+
+        if now < launch {
+            return "Pre-Launch"
+        } else if now > splashdown {
+            return "Mission Complete"
+        } else if now < enterSOI {
+            if distanceFromEarthKm < 38_440 {
+                return "Near Earth"
+            }
             return "Outbound Transit"
-        } else if ratio < 0.7 {
-            return "Mid-Course"
-        } else if ratio < 0.95 {
+        } else if now < closestApproach {
             return "Lunar Approach"
-        } else if distanceFromMoonKm < 10_000 {
-            return "Lunar Flyby"
-        } else if ratio > 0.7 {
-            return "Return Transit"
+        } else if now < exitSOI {
+            if distanceFromMoonKm < 15_000 {
+                return "Lunar Flyby"
+            }
+            return "Lunar Vicinity"
         } else {
-            return "In Transit"
+            if distanceFromEarthKm < 38_440 {
+                return "Reentry Approach"
+            }
+            return "Return Transit"
         }
     }
 
