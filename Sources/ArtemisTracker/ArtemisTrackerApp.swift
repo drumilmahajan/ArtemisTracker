@@ -106,7 +106,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         eventWindow?.close()
 
         let hostingView = NSHostingView(
-            rootView: EventDetailView(event: event)
+            rootView: EventDetailView(event: event, viewModel: viewModel)
         )
 
         let window = NSWindow(

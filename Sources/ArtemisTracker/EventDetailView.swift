@@ -2,6 +2,7 @@ import SwiftUI
 
 struct EventDetailView: View {
     let event: SpaceEvent
+    @ObservedObject var viewModel: ArtemisViewModel
     @State private var countdown: String = ""
     @State private var timer: Timer?
 
@@ -27,7 +28,19 @@ struct EventDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             }
             .padding(.top, 24)
-            .padding(.bottom, 16)
+            .padding(.bottom, 8)
+
+            // Watch button
+            Button(action: { viewModel.watchEvent(event) }) {
+                HStack(spacing: 4) {
+                    Image(systemName: viewModel.watchedEventId == event.id ? "eye.fill" : "eye")
+                    Text(viewModel.watchedEventId == event.id ? "Watching" : "Watch")
+                }
+                .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.bordered)
+            .tint(viewModel.watchedEventId == event.id ? .green : .blue)
+            .padding(.bottom, 8)
 
             Divider()
 

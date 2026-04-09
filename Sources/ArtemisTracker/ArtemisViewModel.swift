@@ -134,6 +134,24 @@ class ArtemisViewModel: ObservableObject {
     @Published var upcomingEvents: [SpaceEvent] = []
     @Published var eventsError: String?
 
+    static let artemisEventId = "artemis-ii"
+    @AppStorage("watchedEventId") var watchedEventId: String = "artemis-ii"
+
+    var isWatchingArtemis: Bool { watchedEventId == Self.artemisEventId }
+
+    /// The currently watched event from the upcoming list (nil if watching Artemis)
+    var watchedEvent: SpaceEvent? {
+        upcomingEvents.first { $0.id == watchedEventId }
+    }
+
+    func watchEvent(_ event: SpaceEvent) {
+        watchedEventId = event.id
+    }
+
+    func watchArtemis() {
+        watchedEventId = Self.artemisEventId
+    }
+
     private var baseArtemis: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
     private var baseMoon: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
     private var baseLightTime: Double = 0
