@@ -3,6 +3,7 @@ import SwiftUI
 struct PopoverView: View {
     @ObservedObject var viewModel: ArtemisViewModel
     var onOpen3D: () -> Void
+    var onOpenEvent: (SpaceEvent) -> Void
 
     var body: some View {
         VStack(spacing: 10) {
@@ -93,6 +94,41 @@ struct PopoverView: View {
             }
 
             Divider()
+
+            // Upcoming launches
+            if !viewModel.upcomingEvents.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("UPCOMING LAUNCHES")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+
+                    ForEach(viewModel.upcomingEvents.prefix(5)) { event in
+                        Button(action: { onOpenEvent(event) }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "flame.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(event.timeUntilLaunch < 86400 ? .orange : .secondary)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(event.missionName ?? event.name)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .lineLimit(1)
+                                    Text("\(event.provider) · \(event.rocketName)")
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                Text(event.countdownFormatted)
+                                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(event.timeUntilLaunch < 3600 ? Color.orange : Color.gray)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                Divider()
+            }
 
             // Actions
             HStack {

@@ -17,6 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var popover: NSPopover!
     var sceneWindow: NSWindow?
+    var eventWindow: NSWindow?
     var viewModel = ArtemisViewModel()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -36,7 +37,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(
                 viewModel: viewModel,
-                onOpen3D: { [weak self] in self?.open3DWindow() }
+                onOpen3D: { [weak self] in self?.open3DWindow() },
+                onOpenEvent: { [weak self] event in self?.openEventDetail(event) }
             )
         )
 
@@ -89,7 +91,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             self?.sceneWindow = nil
-            NSApp.setActivationPolicy(.accessory)
+            if self?.eventWindow == nil {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
+    }
+
+    // MARK: - Event Detail Window
+
+    func openEventDetail(_ event: SpaceEvent) {
+        popover.performClose(nil)
+
+        // Close previous event window
+        eventWindow?.close()
+
+        let hostingView = NSHostingView(
+            rootView: EventDetailView(event: event)
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 450, height: 400),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.contentView = hostingView
+        window.title = event.missionName ?? event.name
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        eventWindow = window
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.eventWindow = nil
+            if self?.sceneWindow == nil {
+                NSApp.setActivationPolicy(.accessory)
+            }
         }
     }
 }

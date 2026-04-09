@@ -131,6 +131,9 @@ class ArtemisViewModel: ObservableObject {
     @Published var plannedTrajectory: [(x: Double, y: Double, z: Double)] = []
     @Published var moonOrbit: [(x: Double, y: Double, z: Double)] = []
 
+    @Published var upcomingEvents: [SpaceEvent] = []
+    @Published var eventsError: String?
+
     private var baseArtemis: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
     private var baseMoon: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
     private var baseLightTime: Double = 0
@@ -140,11 +143,14 @@ class ArtemisViewModel: ObservableObject {
     private var apiTimer: Timer?
     private var interpolationTimer: Timer?
     private var metTimer: Timer?
+    private var eventsTimer: Timer?
     private let horizonsAPI = HorizonsAPI()
+    private let launchLibraryAPI = LaunchLibraryAPI()
 
     func startTracking() {
         fetchFromAPI()
         fetchTrajectory()
+        fetchUpcomingEvents()
 
         apiTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -161,6 +167,12 @@ class ArtemisViewModel: ObservableObject {
             DispatchQueue.main.async {
                 self?.met = MissionData.metString()
                 self?.missionProgress = MissionData.missionProgress()
+            }
+        }
+        // Refresh upcoming events every 10 minutes
+        eventsTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.fetchUpcomingEvents()
             }
         }
     }
@@ -208,6 +220,19 @@ class ArtemisViewModel: ObservableObject {
         }
     }
 
+    func fetchUpcomingEvents() {
+        Task {
+            do {
+                let events = try await launchLibraryAPI.fetchUpcoming(limit: 20)
+                self.upcomingEvents = events
+                self.eventsError = nil
+            } catch {
+                self.eventsError = error.localizedDescription
+                print("Could not fetch upcoming events: \(error)")
+            }
+        }
+    }
+
     private func interpolate() {
         guard let art = baseArtemis, let moon = baseMoon, let base = baseTime else { return }
 
@@ -247,5 +272,6 @@ class ArtemisViewModel: ObservableObject {
         apiTimer?.invalidate(); apiTimer = nil
         interpolationTimer?.invalidate(); interpolationTimer = nil
         metTimer?.invalidate(); metTimer = nil
+        eventsTimer?.invalidate(); eventsTimer = nil
     }
 }
