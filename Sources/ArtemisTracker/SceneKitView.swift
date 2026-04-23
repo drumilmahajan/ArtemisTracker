@@ -3,9 +3,11 @@ import SceneKit
 
 struct TrajectorySceneView: NSViewRepresentable {
     @ObservedObject var viewModel: ArtemisViewModel
-    var resetTrigger: Int = 0  // increment to trigger reset
+    var resetTrigger: Int = 0
 
-    private let scaleFactor: Double = 10_000.0
+    private var mission: TrackableMission {
+        viewModel.watchedMission ?? .artemisII
+    }
 
     func makeNSView(context: Context) -> SCNView {
         let scnView = SCNView()
@@ -16,7 +18,6 @@ struct TrajectorySceneView: NSViewRepresentable {
         scnView.antialiasingMode = .multisampling4X
         scnView.pointOfView = context.coordinator.cameraNode
 
-        // Allow pan + zoom only, no rotation
         let controller = scnView.defaultCameraController
         controller.interactionMode = .pan
         controller.inertiaEnabled = true
@@ -27,21 +28,34 @@ struct TrajectorySceneView: NSViewRepresentable {
 
     func updateNSView(_ scnView: SCNView, context: Context) {
         let coord = context.coordinator
+        let scale = mission.scaleFactor
 
-        // Update live positions
+        // Reconfigure scene if mission changed
+        if coord.currentMissionId != mission.id {
+            coord.reconfigure(for: mission)
+        }
+
         if let data = viewModel.latestData {
-            coord.updatePositions(data: data, scale: scaleFactor)
+            coord.updatePositions(data: data, scale: scale, mission: mission)
         }
 
-        // Draw planned trajectory once available (independent of live data)
+        // Update Sun lighting direction
+        if let sun = viewModel.sunPosition {
+            coord.updateSunLight(sunPos: sun, scale: scale, mission: mission)
+        }
+
+        // Update Earth rotation to real GMST
+        if mission.centerBody == .earth {
+            coord.updateEarthRotation()
+        }
+
         if !coord.hasDrawnTrajectory && !viewModel.plannedTrajectory.isEmpty {
-            coord.drawPlannedTrajectory(viewModel.plannedTrajectory, scale: scaleFactor)
+            coord.drawPlannedTrajectory(viewModel.plannedTrajectory, scale: scale)
         }
-        if !coord.hasDrawnMoonOrbit && !viewModel.moonOrbit.isEmpty {
-            coord.drawMoonOrbit(viewModel.moonOrbit, scale: scaleFactor)
+        if !coord.hasDrawnMoonOrbit && !viewModel.moonOrbit.isEmpty && mission.showMoon {
+            coord.drawMoonOrbit(viewModel.moonOrbit, scale: scale)
         }
 
-        // Reset camera
         if resetTrigger != coord.lastResetTrigger {
             coord.lastResetTrigger = resetTrigger
             coord.resetCamera()
@@ -49,30 +63,29 @@ struct TrajectorySceneView: NSViewRepresentable {
     }
 
     func makeCoordinator() -> SceneCoordinator {
-        SceneCoordinator(scaleFactor: scaleFactor)
+        SceneCoordinator(mission: mission)
     }
 
     class SceneCoordinator {
         let scene: SCNScene
-        let earthNode: SCNNode
-        let moonNode: SCNNode
+        let centerBodyNode: SCNNode
+        var moonNode: SCNNode
         let craftNode: SCNNode
         let cameraNode: SCNNode
+        let sunLightNode: SCNNode
 
         var hasDrawnTrajectory = false
         var hasDrawnMoonOrbit = false
         var lastResetTrigger = 0
         weak var scnView: SCNView?
+        var currentMissionId: String
 
-        private let scaleFactor: Double
-        private let earthDisplayRadius: CGFloat = 2.0
-        private let moonDisplayRadius: CGFloat = 0.8
         private var hasInitializedCamera = false
-        private var lastMoonPos = SCNVector3Zero
+        private var lastSecondaryPos = SCNVector3Zero
         private var lastCraftPos = SCNVector3Zero
 
-        init(scaleFactor: Double) {
-            self.scaleFactor = scaleFactor
+        init(mission: TrackableMission) {
+            currentMissionId = mission.id
             scene = SCNScene()
             scene.background.contents = NSColor.black
 
@@ -87,51 +100,21 @@ struct TrajectorySceneView: NSViewRepresentable {
             starsNode.geometry = starGeo
             scene.rootNode.addChildNode(starsNode)
 
-            // === Earth ===
-            let earthGeo = SCNSphere(radius: earthDisplayRadius)
-            earthGeo.segmentCount = 48
-            let earthMat = SCNMaterial()
-            earthMat.diffuse.contents = NSColor(red: 0.1, green: 0.35, blue: 0.8, alpha: 1.0)
-            earthMat.emission.contents = NSColor(red: 0.03, green: 0.1, blue: 0.25, alpha: 1.0)
-            earthMat.specular.contents = NSColor(white: 0.3, alpha: 1.0)
-            earthGeo.firstMaterial = earthMat
-            earthNode = SCNNode(geometry: earthGeo)
-            earthNode.position = SCNVector3(0, 0, 0)
-            scene.rootNode.addChildNode(earthNode)
+            // Center body (Earth or Sun)
+            centerBodyNode = Self.makeCenterBody(for: mission)
+            scene.rootNode.addChildNode(centerBodyNode)
 
-            // Earth glow
-            let glowGeo = SCNSphere(radius: earthDisplayRadius * 1.12)
-            let glowMat = SCNMaterial()
-            glowMat.diffuse.contents = NSColor(red: 0.3, green: 0.6, blue: 1.0, alpha: 0.12)
-            glowMat.isDoubleSided = true
-            glowGeo.firstMaterial = glowMat
-            earthNode.addChildNode(SCNNode(geometry: glowGeo))
-
-            let earthLabel = Self.makeLabel("Earth", size: 1.0)
-            earthLabel.position = SCNVector3(0, Float(earthDisplayRadius) + 1.2, 0)
-            earthNode.addChildNode(earthLabel)
-            earthNode.runAction(.repeatForever(.rotateBy(x: 0, y: 2 * .pi, z: 0, duration: 30)))
-
-            // === Moon ===
-            let moonGeo = SCNSphere(radius: moonDisplayRadius)
-            moonGeo.segmentCount = 36
-            let moonMat = SCNMaterial()
-            moonMat.diffuse.contents = NSColor(white: 0.65, alpha: 1.0)
-            moonMat.emission.contents = NSColor(white: 0.1, alpha: 1.0)
-            moonGeo.firstMaterial = moonMat
-            moonNode = SCNNode(geometry: moonGeo)
+            // Moon (only for lunar transit)
+            moonNode = Self.makeMoon()
+            moonNode.isHidden = !mission.showMoon
             scene.rootNode.addChildNode(moonNode)
 
-            let moonLabel = Self.makeLabel("Moon", size: 0.8)
-            moonLabel.position = SCNVector3(0, Float(moonDisplayRadius) + 0.8, 0)
-            moonNode.addChildNode(moonLabel)
-
-            // === Artemis Spacecraft (built from primitives) ===
+            // Spacecraft
             craftNode = Self.buildSpacecraft()
             scene.rootNode.addChildNode(craftNode)
 
-            // Craft label above
-            let craftLabel = Self.makeLabel("Orion", size: 0.7)
+            let craftLabel = Self.makeLabel(mission.spacecraft, size: 0.7)
+            craftLabel.name = "craftLabel"
             craftLabel.position = SCNVector3(0, 1.8, 0)
             craftNode.addChildNode(craftLabel)
 
@@ -146,14 +129,14 @@ struct TrajectorySceneView: NSViewRepresentable {
             lightNode.light = craftLight
             craftNode.addChildNode(lightNode)
 
-            // === Lighting ===
-            let sunLight = SCNNode()
-            sunLight.light = SCNLight()
-            sunLight.light?.type = .directional
-            sunLight.light?.color = NSColor.white
-            sunLight.light?.intensity = 1000
-            sunLight.eulerAngles = SCNVector3(-Float.pi / 4, Float.pi / 4, 0)
-            scene.rootNode.addChildNode(sunLight)
+            // Lighting
+            sunLightNode = SCNNode()
+            sunLightNode.light = SCNLight()
+            sunLightNode.light?.type = .directional
+            sunLightNode.light?.color = NSColor.white
+            sunLightNode.light?.intensity = 1000
+            sunLightNode.eulerAngles = SCNVector3(-Float.pi / 4, Float.pi / 4, 0)
+            scene.rootNode.addChildNode(sunLightNode)
 
             let ambient = SCNNode()
             ambient.light = SCNLight()
@@ -162,7 +145,7 @@ struct TrajectorySceneView: NSViewRepresentable {
             ambient.light?.intensity = 500
             scene.rootNode.addChildNode(ambient)
 
-            // === Camera ===
+            // Camera
             cameraNode = SCNNode()
             cameraNode.camera = SCNCamera()
             cameraNode.camera?.zNear = 0.1
@@ -173,12 +156,136 @@ struct TrajectorySceneView: NSViewRepresentable {
             scene.rootNode.addChildNode(cameraNode)
         }
 
+        // MARK: - Reconfigure for different mission
+
+        func reconfigure(for mission: TrackableMission) {
+            currentMissionId = mission.id
+            hasDrawnTrajectory = false
+            hasDrawnMoonOrbit = false
+            hasInitializedCamera = false
+
+            // Remove old trajectory/orbit lines
+            scene.rootNode.childNode(withName: "plannedTrajectory", recursively: false)?.removeFromParentNode()
+            scene.rootNode.childNode(withName: "moonOrbit", recursively: false)?.removeFromParentNode()
+
+            // Update center body
+            centerBodyNode.childNodes.forEach { $0.removeFromParentNode() }
+            let newCenter = Self.makeCenterBody(for: mission)
+            centerBodyNode.geometry = newCenter.geometry
+            for child in newCenter.childNodes {
+                centerBodyNode.addChildNode(child)
+            }
+            centerBodyNode.removeAllActions()
+            centerBodyNode.eulerAngles = SCNVector3Zero
+            if mission.centerBody == .earth {
+                let obliquity = CGFloat(23.4 * .pi / 180.0)
+                centerBodyNode.eulerAngles.z = obliquity
+            }
+
+            // Show/hide moon
+            moonNode.isHidden = !mission.showMoon
+
+            // Update spacecraft label
+            craftNode.childNode(withName: "craftLabel", recursively: false)?.removeFromParentNode()
+            let craftLabel = Self.makeLabel(mission.spacecraft, size: 0.7)
+            craftLabel.name = "craftLabel"
+            craftLabel.position = SCNVector3(0, 1.8, 0)
+            craftNode.addChildNode(craftLabel)
+        }
+
+        // MARK: - Center Body Factory
+
+        static func makeCenterBody(for mission: TrackableMission) -> SCNNode {
+            let radius: CGFloat = 2.0
+            let node: SCNNode
+
+            if mission.centerBody == .sun {
+                let geo = SCNSphere(radius: radius)
+                geo.segmentCount = 48
+                let mat = SCNMaterial()
+                if let texturePath = Bundle.main.path(forResource: "sun_texture", ofType: "jpg"),
+                   let image = NSImage(contentsOfFile: texturePath) {
+                    mat.diffuse.contents = image
+                    mat.emission.contents = image
+                    mat.emission.intensity = 0.3
+                } else {
+                    mat.diffuse.contents = NSColor(red: 1.0, green: 0.85, blue: 0.2, alpha: 1.0)
+                    mat.emission.contents = NSColor(red: 0.8, green: 0.6, blue: 0.1, alpha: 1.0)
+                }
+                geo.firstMaterial = mat
+                node = SCNNode(geometry: geo)
+
+                let glowGeo = SCNSphere(radius: radius * 1.3)
+                let glowMat = SCNMaterial()
+                glowMat.diffuse.contents = NSColor(red: 1.0, green: 0.8, blue: 0.2, alpha: 0.08)
+                glowMat.emission.contents = NSColor(red: 1.0, green: 0.6, blue: 0.1, alpha: 0.05)
+                glowMat.isDoubleSided = true
+                glowGeo.firstMaterial = glowMat
+                node.addChildNode(SCNNode(geometry: glowGeo))
+
+                let label = makeLabel("Sun", size: 1.0)
+                label.position = SCNVector3(0, Float(radius) + 1.2, 0)
+                node.addChildNode(label)
+            } else {
+                let geo = SCNSphere(radius: radius)
+                geo.segmentCount = 64
+                let mat = SCNMaterial()
+                if let texturePath = Bundle.main.path(forResource: "earth_daymap", ofType: "jpg"),
+                   let image = NSImage(contentsOfFile: texturePath) {
+                    mat.diffuse.contents = image
+                    mat.specular.contents = NSColor(white: 0.4, alpha: 1.0)
+                    mat.emission.contents = NSColor(red: 0.02, green: 0.05, blue: 0.15, alpha: 1.0)
+                } else {
+                    mat.diffuse.contents = NSColor(red: 0.1, green: 0.35, blue: 0.8, alpha: 1.0)
+                    mat.emission.contents = NSColor(red: 0.03, green: 0.1, blue: 0.25, alpha: 1.0)
+                    mat.specular.contents = NSColor(white: 0.3, alpha: 1.0)
+                }
+                geo.firstMaterial = mat
+                node = SCNNode(geometry: geo)
+
+                // Atmosphere glow
+                let glowGeo = SCNSphere(radius: radius * 1.05)
+                let glowMat = SCNMaterial()
+                glowMat.diffuse.contents = NSColor(red: 0.4, green: 0.7, blue: 1.0, alpha: 0.08)
+                glowMat.isDoubleSided = true
+                glowGeo.firstMaterial = glowMat
+                node.addChildNode(SCNNode(geometry: glowGeo))
+
+                let label = makeLabel("Earth", size: 1.0)
+                label.position = SCNVector3(0, Float(radius) + 1.2, 0)
+                node.addChildNode(label)
+            }
+
+            node.position = SCNVector3(0, 0, 0)
+            // Earth gets 23.4° axial tilt; Sun stays upright
+            if mission.centerBody == .earth {
+                let obliquity = CGFloat(23.4 * .pi / 180.0)
+                node.eulerAngles.z = obliquity
+            }
+            return node
+        }
+
+        static func makeMoon() -> SCNNode {
+            let radius: CGFloat = 0.8
+            let geo = SCNSphere(radius: radius)
+            geo.segmentCount = 36
+            let mat = SCNMaterial()
+            mat.diffuse.contents = NSColor(white: 0.65, alpha: 1.0)
+            mat.emission.contents = NSColor(white: 0.1, alpha: 1.0)
+            geo.firstMaterial = mat
+            let node = SCNNode(geometry: geo)
+
+            let label = makeLabel("Moon", size: 0.8)
+            label.position = SCNVector3(0, Float(radius) + 0.8, 0)
+            node.addChildNode(label)
+            return node
+        }
+
         // MARK: - Spacecraft Model
 
         static func buildSpacecraft() -> SCNNode {
             let ship = SCNNode()
 
-            // --- Command Module (capsule/cone shape) ---
             let capsuleGeo = SCNCapsule(capRadius: 0.25, height: 0.8)
             let capsuleMat = SCNMaterial()
             capsuleMat.diffuse.contents = NSColor(white: 0.9, alpha: 1.0)
@@ -186,10 +293,8 @@ struct TrajectorySceneView: NSViewRepresentable {
             capsuleMat.metalness.contents = NSColor(white: 0.6, alpha: 1.0)
             capsuleGeo.firstMaterial = capsuleMat
             let capsuleNode = SCNNode(geometry: capsuleGeo)
-            capsuleNode.position = SCNVector3(0, 0, 0)
             ship.addChildNode(capsuleNode)
 
-            // --- Service Module (cylinder body) ---
             let serviceGeo = SCNCylinder(radius: 0.22, height: 0.6)
             let serviceMat = SCNMaterial()
             serviceMat.diffuse.contents = NSColor(red: 0.7, green: 0.7, blue: 0.75, alpha: 1.0)
@@ -199,7 +304,6 @@ struct TrajectorySceneView: NSViewRepresentable {
             serviceNode.position = SCNVector3(0, -0.7, 0)
             ship.addChildNode(serviceNode)
 
-            // --- Solar Panel Wings (two flat boxes) ---
             let panelGeo = SCNBox(width: 2.0, height: 0.02, length: 0.4, chamferRadius: 0)
             let panelMat = SCNMaterial()
             panelMat.diffuse.contents = NSColor(red: 0.1, green: 0.15, blue: 0.4, alpha: 1.0)
@@ -215,7 +319,6 @@ struct TrajectorySceneView: NSViewRepresentable {
             rightPanel.position = SCNVector3(1.2, -0.6, 0)
             ship.addChildNode(rightPanel)
 
-            // Panel struts
             let strutGeo = SCNCylinder(radius: 0.02, height: 0.4)
             let strutMat = SCNMaterial()
             strutMat.diffuse.contents = NSColor(white: 0.5, alpha: 1.0)
@@ -228,7 +331,6 @@ struct TrajectorySceneView: NSViewRepresentable {
                 ship.addChildNode(strut)
             }
 
-            // --- Engine Nozzle (cone at bottom) ---
             let nozzleGeo = SCNCone(topRadius: 0.15, bottomRadius: 0.3, height: 0.3)
             let nozzleMat = SCNMaterial()
             nozzleMat.diffuse.contents = NSColor(red: 0.3, green: 0.3, blue: 0.35, alpha: 1.0)
@@ -238,7 +340,6 @@ struct TrajectorySceneView: NSViewRepresentable {
             nozzleNode.position = SCNVector3(0, -1.15, 0)
             ship.addChildNode(nozzleNode)
 
-            // Engine glow
             let engineGlow = SCNSphere(radius: 0.15)
             let engineMat = SCNMaterial()
             engineMat.diffuse.contents = NSColor(red: 0.3, green: 0.5, blue: 1.0, alpha: 0.6)
@@ -248,7 +349,6 @@ struct TrajectorySceneView: NSViewRepresentable {
             engineGlowNode.position = SCNVector3(0, -1.3, 0)
             ship.addChildNode(engineGlowNode)
 
-            // Outer glow halo so it's visible from far away
             let haloGeo = SCNSphere(radius: 1.5)
             let haloMat = SCNMaterial()
             haloMat.diffuse.contents = NSColor(red: 1.0, green: 0.9, blue: 0.4, alpha: 0.1)
@@ -258,10 +358,8 @@ struct TrajectorySceneView: NSViewRepresentable {
             let haloNode = SCNNode(geometry: haloGeo)
             ship.addChildNode(haloNode)
 
-            // Scale up so it's visible at scene scale
             ship.scale = SCNVector3(0.5, 0.5, 0.5)
 
-            // Billboard constraint so it always faces camera nicely
             let billboard = SCNBillboardConstraint()
             billboard.freeAxes = [.X, .Y]
             ship.constraints = [billboard]
@@ -271,32 +369,74 @@ struct TrajectorySceneView: NSViewRepresentable {
 
         // MARK: - Updates
 
-        func updatePositions(data: ArtemisData, scale: Double) {
-            let artPos = SCNVector3(
+        func updatePositions(data: ArtemisData, scale: Double, mission: TrackableMission) {
+            let craftPos = SCNVector3(
                 Float(data.positionKm.x / scale),
                 Float(data.positionKm.y / scale),
                 Float(data.positionKm.z / scale)
             )
-            let moonPos = SCNVector3(
-                Float(data.moonPositionKm.x / scale),
-                Float(data.moonPositionKm.y / scale),
-                Float(data.moonPositionKm.z / scale)
-            )
 
             SCNTransaction.begin()
             SCNTransaction.animationDuration = 0.15
-            craftNode.position = artPos
-            moonNode.position = moonPos
+            craftNode.position = craftPos
+
+            if mission.showMoon {
+                let moonPos = SCNVector3(
+                    Float(data.moonPositionKm.x / scale),
+                    Float(data.moonPositionKm.y / scale),
+                    Float(data.moonPositionKm.z / scale)
+                )
+                moonNode.position = moonPos
+                lastSecondaryPos = moonPos
+            }
             SCNTransaction.commit()
 
-            lastMoonPos = moonPos
-            lastCraftPos = artPos
+            lastCraftPos = craftPos
 
-            // Frame camera once, then let user pan/zoom freely
             if !hasInitializedCamera {
                 hasInitializedCamera = true
-                frameCamera(moonPos: moonPos, craftPos: artPos)
+                frameCamera(craftPos: craftPos, mission: mission)
             }
+        }
+
+        // MARK: - Sun Light & Earth Rotation
+
+        func updateSunLight(sunPos: (x: Double, y: Double, z: Double), scale: Double, mission: TrackableMission) {
+            // For Earth-centered views, point directional light from the Sun's actual position
+            if mission.centerBody == .earth {
+                let dist = sqrt(sunPos.x * sunPos.x + sunPos.y * sunPos.y + sunPos.z * sunPos.z)
+                guard dist > 0 else { return }
+                // Normalize direction from center toward Sun
+                let dx = Float(sunPos.x / dist)
+                let dy = Float(sunPos.y / dist)
+                let dz = Float(sunPos.z / dist)
+                // Point the directional light toward the origin (Earth) from the Sun's direction
+                // Position it far away in the Sun's direction and look at origin
+                sunLightNode.position = SCNVector3(dx * 100, dy * 100, dz * 100)
+                sunLightNode.look(at: SCNVector3Zero)
+            }
+        }
+
+        func updateEarthRotation() {
+            // Calculate Greenwich Mean Sidereal Time (GMST) for real Earth rotation
+            let now = Date()
+            let j2000 = DateComponents(calendar: .init(identifier: .gregorian),
+                                       timeZone: TimeZone(identifier: "UTC"),
+                                       year: 2000, month: 1, day: 1, hour: 12).date!
+            let daysSinceJ2000 = now.timeIntervalSince(j2000) / 86400.0
+            let centuries = daysSinceJ2000 / 36525.0
+
+            // GMST in degrees
+            var gmst = 280.46061837 + 360.98564736629 * daysSinceJ2000
+                + 0.000387933 * centuries * centuries
+            gmst = gmst.truncatingRemainder(dividingBy: 360.0)
+            if gmst < 0 { gmst += 360.0 }
+
+            let gmstRadians = Float(gmst * .pi / 180.0)
+            let obliquity = Float(23.4 * .pi / 180.0)
+
+            // Apply rotation: first tilt axis, then rotate around tilted axis
+            centerBodyNode.eulerAngles = SCNVector3(0, gmstRadians, obliquity)
         }
 
         // MARK: - Trajectory Drawing
@@ -304,7 +444,6 @@ struct TrajectorySceneView: NSViewRepresentable {
         func drawPlannedTrajectory(_ positions: [(x: Double, y: Double, z: Double)], scale: Double) {
             hasDrawnTrajectory = true
 
-            // Remove old if any
             scene.rootNode.childNode(withName: "plannedTrajectory", recursively: false)?.removeFromParentNode()
 
             let trajectoryNode = SCNNode()
@@ -317,43 +456,30 @@ struct TrajectorySceneView: NSViewRepresentable {
             let count = points.count
             guard count >= 2 else { return }
 
-            // Split past vs future based on trajectory data window
-            // Trajectory data: Apr 2 03:00 to Apr 10 23:00 UTC
-            let trajStart = MissionData.utcDate(2026, 4, 2, 3, 0)
-            let trajEnd = MissionData.utcDate(2026, 4, 10, 23, 0)
-            let elapsed = Date().timeIntervalSince(trajStart)
-            let trajDuration = trajEnd.timeIntervalSince(trajStart)
-            let trajProgress = max(0, min(1, elapsed / trajDuration))
-            let currentIndex = Int(Double(count) * trajProgress)
-
-            let step = max(1, count / 400)
+            // Draw as a continuous orbital trail
+            let lineRadius: CGFloat = 0.08
+            let step = max(1, count / 500)
             var i = step
             while i < count {
                 let start = points[i - step]
                 let end = points[i]
-
-                if i <= currentIndex {
-                    // Past: solid bright green
-                    let seg = makeLine(from: start, to: end,
-                                       color: NSColor(red: 0.2, green: 0.9, blue: 0.3, alpha: 0.85),
-                                       radius: 0.1)
-                    trajectoryNode.addChildNode(seg)
-                } else {
-                    // Future: dashed cyan (skip every other segment)
-                    if (i / step) % 2 == 0 {
-                        let seg = makeLine(from: start, to: end,
-                                           color: NSColor(red: 0.3, green: 0.7, blue: 0.9, alpha: 0.35),
-                                           radius: 0.06)
-                        trajectoryNode.addChildNode(seg)
-                    }
-                }
+                // Fade from bright (recent) to dim (older)
+                let progress = Double(i) / Double(count)
+                let alpha = 0.3 + 0.6 * progress
+                let seg = makeLine(from: start, to: end,
+                                   color: NSColor(red: 0.2, green: 0.8, blue: 0.4, alpha: alpha),
+                                   radius: lineRadius)
+                trajectoryNode.addChildNode(seg)
                 i += step
             }
 
             scene.rootNode.addChildNode(trajectoryNode)
 
-            // Re-frame camera if trajectory is larger than what we see
-            // Camera will auto-frame on next position update
+            // Auto-frame camera to include the trail
+            if !points.isEmpty {
+                frameCamera(craftPos: lastCraftPos,
+                            mission: TrackableMission.allMissions.first { $0.id == currentMissionId } ?? .artemisII)
+            }
         }
 
         func drawMoonOrbit(_ positions: [(x: Double, y: Double, z: Double)], scale: Double) {
@@ -370,7 +496,6 @@ struct TrajectorySceneView: NSViewRepresentable {
 
             guard points.count >= 2 else { return }
 
-            // Dotted: skip every other segment, bright enough to see
             let step = max(1, points.count / 300)
             var i = step
             while i < points.count {
@@ -391,15 +516,15 @@ struct TrajectorySceneView: NSViewRepresentable {
         // MARK: - Camera
 
         func resetCamera() {
-            frameCamera(moonPos: lastMoonPos, craftPos: lastCraftPos)
+            frameCamera(craftPos: lastCraftPos, mission: TrackableMission.allMissions.first { $0.id == currentMissionId } ?? .artemisII)
         }
 
-        private func frameCamera(moonPos: SCNVector3, craftPos: SCNVector3) {
-            // Data is in X-Y ecliptic plane (Z is small).
-            // Camera looks down the Z axis to see X-Y as the flat plane.
-            let allPoints = [SCNVector3Zero, moonPos, craftPos]
+        private func frameCamera(craftPos: SCNVector3, mission: TrackableMission) {
+            var allPoints = [SCNVector3Zero, craftPos]
+            if mission.showMoon {
+                allPoints.append(lastSecondaryPos)
+            }
 
-            // Find center and extent in X-Y
             var sumX: Float = 0, sumY: Float = 0
             for p in allPoints { sumX += Float(p.x); sumY += Float(p.y) }
             let cx = sumX / Float(allPoints.count)
@@ -412,39 +537,12 @@ struct TrajectorySceneView: NSViewRepresentable {
                 maxExtent = max(maxExtent, max(dx, dy))
             }
 
-            // Camera on Z axis looking down, with padding
             let camDist: Float = maxExtent * 2.0 + 10
 
             SCNTransaction.begin()
             SCNTransaction.animationDuration = 0.3
             cameraNode.position = SCNVector3(CGFloat(cx), CGFloat(cy), CGFloat(camDist))
             cameraNode.look(at: SCNVector3(CGFloat(cx), CGFloat(cy), 0))
-            SCNTransaction.commit()
-        }
-
-        private func frameCameraForTrajectory(points: [SCNVector3]) {
-            var minX: CGFloat = .greatestFiniteMagnitude, maxX: CGFloat = -.greatestFiniteMagnitude
-            var minY: CGFloat = .greatestFiniteMagnitude, maxY: CGFloat = -.greatestFiniteMagnitude
-            var minZ: CGFloat = .greatestFiniteMagnitude, maxZ: CGFloat = -.greatestFiniteMagnitude
-
-            for p in points {
-                let px = CGFloat(p.x), py = CGFloat(p.y), pz = CGFloat(p.z)
-                minX = min(minX, px); maxX = max(maxX, px)
-                minY = min(minY, py); maxY = max(maxY, py)
-                minZ = min(minZ, pz); maxZ = max(maxZ, pz)
-            }
-
-            let cx = Float((minX + maxX) / 2)
-            let cy = Float((minY + maxY) / 2)
-            let cz = Float((minZ + maxZ) / 2)
-            let center = SCNVector3(cx, cy, cz)
-            let span = Float(max(maxX - minX, max(maxY - minY, maxZ - minZ)))
-            let camDist = span * 1.2 + 10
-
-            SCNTransaction.begin()
-            SCNTransaction.animationDuration = 1.5
-            cameraNode.position = SCNVector3(cx + camDist * 0.2, cy + camDist * 0.5, cz + camDist * 0.7)
-            cameraNode.look(at: center)
             SCNTransaction.commit()
         }
 

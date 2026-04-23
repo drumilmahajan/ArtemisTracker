@@ -7,13 +7,52 @@ struct PopoverView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            if viewModel.isWatchingArtemis {
-                artemisSection
+            if let mission = viewModel.watchedMission {
+                if mission.id == TrackableMission.artemisII.id {
+                    artemisSection
+                } else {
+                    missionSection(mission)
+                }
             } else if let event = viewModel.watchedEvent {
                 watchedEventSection(event)
             } else {
-                // Watched event not in list anymore, fall back to Artemis
+                // Nothing selected — show Artemis by default
                 artemisSection
+            }
+
+            Divider()
+
+            // Active missions
+            VStack(alignment: .leading, spacing: 6) {
+                Text("ACTIVE MISSIONS")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+
+                ForEach(TrackableMission.allMissions) { mission in
+                    Button(action: { viewModel.watchMission(mission) }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: missionIcon(mission))
+                                .font(.system(size: 9))
+                                .foregroundStyle(missionColor(mission))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(mission.name)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .lineLimit(1)
+                                Text(mission.agency)
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            if viewModel.watchedEventId == mission.id {
+                                Image(systemName: "eye.fill")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             Divider()
@@ -60,13 +99,9 @@ struct PopoverView: View {
 
             // Actions
             HStack {
-                if viewModel.isWatchingArtemis {
+                if viewModel.watchedMission != nil {
                     Button(action: onOpen3D) {
                         Label("3D View", systemImage: "cube.fill").font(.caption)
-                    }.buttonStyle(.bordered)
-                } else {
-                    Button(action: { viewModel.watchArtemis() }) {
-                        Label("Artemis II", systemImage: "moon.stars.fill").font(.caption)
                     }.buttonStyle(.bordered)
                 }
 
@@ -178,6 +213,55 @@ struct PopoverView: View {
         }
     }
 
+    // MARK: - Generic Mission Section
+
+    @ViewBuilder
+    private func missionSection(_ mission: TrackableMission) -> some View {
+        HStack {
+            Image(systemName: missionIcon(mission))
+                .font(.title2)
+                .foregroundStyle(missionColor(mission))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(mission.name)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text("\(mission.spacecraft) · \(mission.agency)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Image(systemName: "eye.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(.green)
+        }
+
+        Divider()
+
+        if let data = viewModel.latestData {
+            VStack(spacing: 6) {
+                TelemetryRow(icon: "globe.americas.fill", iconColor: .blue,
+                             label: "From \(mission.centerBody == .earth ? "Earth" : "Sun")",
+                             value: viewModel.units.formatDistance(data.distanceFromEarthKm))
+                TelemetryRow(icon: "gauge.with.needle.fill", iconColor: .orange,
+                             label: "Speed", value: viewModel.units.formatSpeed(data.speedKmS))
+            }
+
+            HStack {
+                Circle().fill(.green).frame(width: 6, height: 6)
+                Text("Live")
+                    .font(.caption2).foregroundStyle(.tertiary)
+                Spacer()
+                Text(mission.description)
+                    .font(.caption2).foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        } else if viewModel.isLoading {
+            ProgressView("Connecting to JPL Horizons...")
+                .padding()
+        }
+    }
+
     // MARK: - Watched Event Section
 
     @ViewBuilder
@@ -239,6 +323,24 @@ struct PopoverView: View {
         if s.contains("tbd") || s.contains("tbc") { return .yellow }
         if s.contains("hold") || s.contains("failure") { return .red }
         return .blue
+    }
+
+    private func missionIcon(_ mission: TrackableMission) -> String {
+        switch mission.orbitType {
+        case .lowEarthOrbit: return "globe.americas.fill"
+        case .lunarTransit: return "moon.stars.fill"
+        case .lagrangePoint: return "scope"
+        case .interplanetary: return "star.fill"
+        }
+    }
+
+    private func missionColor(_ mission: TrackableMission) -> Color {
+        switch mission.orbitType {
+        case .lowEarthOrbit: return .blue
+        case .lunarTransit: return .yellow
+        case .lagrangePoint: return .purple
+        case .interplanetary: return .cyan
+        }
     }
 }
 

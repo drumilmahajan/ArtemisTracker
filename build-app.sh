@@ -19,6 +19,9 @@ cp .build/apple/Products/Release/ArtemisTracker "$APP_DIR/MacOS/ArtemisTracker"
 # Copy Info.plist
 cp Sources/ArtemisTracker/Info.plist "$APP_DIR/Info.plist"
 
+# Copy resources (textures)
+cp Sources/ArtemisTracker/Resources/* "$APP_DIR/Resources/" 2>/dev/null || true
+
 # Code sign if Developer ID certificate is available
 SIGN_ID="Developer ID Application: Drumil Mahajan (69FNTL8QYK)"
 if security find-identity -v -p codesigning | grep -q "$SIGN_ID"; then

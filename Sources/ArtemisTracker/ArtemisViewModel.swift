@@ -130,18 +130,40 @@ class ArtemisViewModel: ObservableObject {
 
     @Published var plannedTrajectory: [(x: Double, y: Double, z: Double)] = []
     @Published var moonOrbit: [(x: Double, y: Double, z: Double)] = []
+    @Published var sunPosition: (x: Double, y: Double, z: Double)?
 
     @Published var upcomingEvents: [SpaceEvent] = []
     @Published var eventsError: String?
 
-    static let artemisEventId = "artemis-ii"
     @AppStorage("watchedEventId") var watchedEventId: String = "artemis-ii"
 
-    var isWatchingArtemis: Bool { watchedEventId == Self.artemisEventId }
+    var isWatchingArtemis: Bool { watchedEventId == TrackableMission.artemisII.id }
 
-    /// The currently watched event from the upcoming list (nil if watching Artemis)
+    /// The currently watched trackable mission (if any)
+    var watchedMission: TrackableMission? {
+        TrackableMission.allMissions.first { $0.id == watchedEventId }
+    }
+
+    /// The currently watched upcoming event (if not watching a mission)
     var watchedEvent: SpaceEvent? {
-        upcomingEvents.first { $0.id == watchedEventId }
+        if watchedMission != nil { return nil }
+        return upcomingEvents.first { $0.id == watchedEventId }
+    }
+
+    func watchMission(_ mission: TrackableMission) {
+        let changed = watchedEventId != mission.id
+        watchedEventId = mission.id
+        if changed {
+            // Reset tracking state and re-fetch for new target
+            latestData = nil
+            baseTarget = nil
+            baseMoon = nil
+            baseTime = nil
+            plannedTrajectory = []
+            moonOrbit = []
+            fetchFromAPI()
+            fetchOrbitTrail(for: mission)
+        }
     }
 
     func watchEvent(_ event: SpaceEvent) {
@@ -149,10 +171,10 @@ class ArtemisViewModel: ObservableObject {
     }
 
     func watchArtemis() {
-        watchedEventId = Self.artemisEventId
+        watchMission(.artemisII)
     }
 
-    private var baseArtemis: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
+    private var baseTarget: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
     private var baseMoon: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
     private var baseLightTime: Double = 0
     private var baseRangeRate: Double = 0
@@ -167,7 +189,11 @@ class ArtemisViewModel: ObservableObject {
 
     func startTracking() {
         fetchFromAPI()
-        fetchTrajectory()
+        if let mission = watchedMission {
+            fetchOrbitTrail(for: mission)
+        } else {
+            fetchTrajectory()
+        }
         fetchUpcomingEvents()
 
         apiTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
@@ -196,16 +222,34 @@ class ArtemisViewModel: ObservableObject {
     }
 
     func fetchFromAPI() {
+        guard let mission = watchedMission else { return }
+
         if latestData == nil { isLoading = true }
         errorMessage = nil
 
         Task {
             do {
-                let result = try await horizonsAPI.fetchRawVectors()
-                self.baseArtemis = result.artemis
-                self.baseMoon = result.moon
-                self.baseLightTime = result.lightTime
-                self.baseRangeRate = result.rangeRate
+                let target = try await horizonsAPI.fetchTargetVectors(
+                    targetId: mission.horizonsId, center: mission.centerBody.rawValue)
+                self.baseTarget = (x: target.x, y: target.y, z: target.z,
+                                   vx: target.vx, vy: target.vy, vz: target.vz)
+                self.baseLightTime = target.lt
+                self.baseRangeRate = target.rr
+
+                // Fetch secondary body (Moon) if needed
+                if let secondaryId = mission.secondaryBodyId {
+                    let moon = try await horizonsAPI.fetchTargetVectors(
+                        targetId: secondaryId, center: mission.centerBody.rawValue)
+                    self.baseMoon = (x: moon.x, y: moon.y, z: moon.z,
+                                    vx: moon.vx, vy: moon.vy, vz: moon.vz)
+                }
+
+                // Fetch Sun position for Earth-centered views (for lighting)
+                if mission.centerBody == .earth {
+                    let sun = try await horizonsAPI.fetchSunPosition(center: mission.centerBody.rawValue)
+                    self.sunPosition = sun
+                }
+
                 self.baseTime = Date()
                 self.lastAPIFetch = Date()
                 self.isLoading = false
@@ -238,6 +282,28 @@ class ArtemisViewModel: ObservableObject {
         }
     }
 
+    private func fetchOrbitTrail(for mission: TrackableMission) {
+        Task {
+            do {
+                let trail = try await horizonsAPI.fetchOrbitTrail(mission: mission)
+                self.plannedTrajectory = trail
+            } catch {
+                print("Could not fetch orbit trail for \(mission.name): \(error)")
+            }
+        }
+        // Fetch Moon orbit if needed
+        if mission.showMoon {
+            Task {
+                do {
+                    let orb = try await horizonsAPI.fetchMoonOrbit()
+                    self.moonOrbit = orb
+                } catch {
+                    print("Could not fetch moon orbit: \(error)")
+                }
+            }
+        }
+    }
+
     func fetchUpcomingEvents() {
         Task {
             do {
@@ -252,33 +318,35 @@ class ArtemisViewModel: ObservableObject {
     }
 
     private func interpolate() {
-        guard let art = baseArtemis, let moon = baseMoon, let base = baseTime else { return }
+        guard let tgt = baseTarget, let base = baseTime else { return }
 
         let dt = Date().timeIntervalSince(base)
 
-        let ax = art.x + art.vx * dt
-        let ay = art.y + art.vy * dt
-        let az = art.z + art.vz * dt
+        let tx = tgt.x + tgt.vx * dt
+        let ty = tgt.y + tgt.vy * dt
+        let tz = tgt.z + tgt.vz * dt
 
-        let mx = moon.x + moon.vx * dt
-        let my = moon.y + moon.vy * dt
-        let mz = moon.z + moon.vz * dt
+        var mx = 0.0, my = 0.0, mz = 0.0
+        if let moon = baseMoon {
+            mx = moon.x + moon.vx * dt
+            my = moon.y + moon.vy * dt
+            mz = moon.z + moon.vz * dt
+        }
 
-        let distEarth = sqrt(ax * ax + ay * ay + az * az)
-        let dx = ax - mx, dy = ay - my, dz = az - mz
-        let distMoon = sqrt(dx * dx + dy * dy + dz * dz)
-        let speed = sqrt(art.vx * art.vx + art.vy * art.vy + art.vz * art.vz)
+        let distCenter = sqrt(tx * tx + ty * ty + tz * tz)
+        let dx = tx - mx, dy = ty - my, dz = tz - mz
+        let distMoon = baseMoon != nil ? sqrt(dx * dx + dy * dy + dz * dz) : 0
+        let speed = sqrt(tgt.vx * tgt.vx + tgt.vy * tgt.vy + tgt.vz * tgt.vz)
 
-        // Interpolate light-time based on distance change
-        let lt = distEarth / 299_792.458 // speed of light in km/s
+        let lt = distCenter / 299_792.458
 
         latestData = ArtemisData(
             timestamp: Date(),
-            positionKm: (x: ax, y: ay, z: az),
-            velocityKmS: (vx: art.vx, vy: art.vy, vz: art.vz),
+            positionKm: (x: tx, y: ty, z: tz),
+            velocityKmS: (vx: tgt.vx, vy: tgt.vy, vz: tgt.vz),
             moonPositionKm: (x: mx, y: my, z: mz),
-            moonVelocityKmS: (vx: moon.vx, vy: moon.vy, vz: moon.vz),
-            distanceFromEarthKm: distEarth,
+            moonVelocityKmS: baseMoon.map { (vx: $0.vx, vy: $0.vy, vz: $0.vz) } ?? (vx: 0, vy: 0, vz: 0),
+            distanceFromEarthKm: distCenter,
             distanceFromMoonKm: distMoon,
             speedKmS: speed,
             lightTimeSeconds: lt,

@@ -5,6 +5,34 @@ struct HorizonsAPI {
     private let artemisID = "-1024"  // Artemis II spacecraft
     private let moonID = "301"       // Moon
 
+    /// Fetch Sun position relative to a center body
+    func fetchSunPosition(center: String) async throws -> (x: Double, y: Double, z: Double) {
+        let now = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        let startTime = formatter.string(from: now.addingTimeInterval(-3600))
+        let stopTime = formatter.string(from: now)
+        let result = try await fetchVectors(target: "10", center: center, start: startTime, stop: stopTime, step: "30 m")
+        guard let v = result.last else { throw TrackerError.noDataAvailable }
+        return (x: v.x, y: v.y, z: v.z)
+    }
+
+    /// Fetch state vectors for any target from any center
+    func fetchTargetVectors(targetId: String, center: String) async throws -> (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double, lt: Double, rr: Double) {
+        let now = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+
+        let startTime = formatter.string(from: now.addingTimeInterval(-3600))
+        let stopTime = formatter.string(from: now)
+
+        let result = try await fetchVectors(target: targetId, center: center, start: startTime, stop: stopTime, step: "30 m")
+        guard let v = result.last else { throw TrackerError.noDataAvailable }
+        return (x: v.x, y: v.y, z: v.z, vx: v.vx, vy: v.vy, vz: v.vz, lt: v.lt, rr: v.rr)
+    }
+
     /// Returns raw state vectors for Artemis and Moon, plus light-time and range-rate
     func fetchRawVectors() async throws -> (
         artemis: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double),
@@ -35,6 +63,48 @@ struct HorizonsAPI {
             lightTime: art.lt,
             rangeRate: art.rr
         )
+    }
+
+    /// Fetches an orbital trail for any mission based on its orbit type
+    func fetchOrbitTrail(mission: TrackableMission) async throws -> [(x: Double, y: Double, z: Double)] {
+        let now = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+
+        let (pastDuration, futureDuration, step): (TimeInterval, TimeInterval, String) = {
+            switch mission.orbitType {
+            case .lowEarthOrbit:
+                // ~2 orbits back, 1 forward (~90 min period)
+                return (3 * 3600, 1.5 * 3600, "2 m")
+            case .lunarTransit:
+                // Full mission
+                return (0, 0, "1 h")  // handled separately for Artemis
+            case .lagrangePoint:
+                // 90 days to show halo orbit
+                return (45 * 86400, 45 * 86400, "12 h")
+            case .interplanetary:
+                // 1 year arc
+                return (180 * 86400, 180 * 86400, "2 d")
+            }
+        }()
+
+        // Artemis uses its fixed mission window
+        if mission.id == TrackableMission.artemisII.id {
+            return try await fetchFullTrajectory()
+        }
+
+        let startTime = formatter.string(from: now.addingTimeInterval(-pastDuration))
+        let stopTime = formatter.string(from: now.addingTimeInterval(futureDuration))
+
+        let vectors = try await fetchVectors(
+            target: mission.horizonsId,
+            center: mission.centerBody.rawValue,
+            start: startTime,
+            stop: stopTime,
+            step: step
+        )
+        return vectors.map { (x: $0.x, y: $0.y, z: $0.z) }
     }
 
     /// Fetches the full planned trajectory for Artemis II (positions only)
