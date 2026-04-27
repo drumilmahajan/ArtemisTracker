@@ -45,7 +45,7 @@ enum UnitSystem: String, CaseIterable {
     }
 }
 
-struct ArtemisData {
+struct TrackingData {
     let timestamp: Date
     let positionKm: (x: Double, y: Double, z: Double)
     let velocityKmS: (vx: Double, vy: Double, vz: Double)
@@ -118,8 +118,8 @@ struct ArtemisData {
 }
 
 @MainActor
-class ArtemisViewModel: ObservableObject {
-    @Published var latestData: ArtemisData?
+class GalileoViewModel: ObservableObject {
+    @Published var latestData: TrackingData?
     @AppStorage("unitSystem") var unitSystem: String = UnitSystem.metric.rawValue
     var units: UnitSystem { UnitSystem(rawValue: unitSystem) ?? .metric }
     @Published var isLoading = false
@@ -133,9 +133,10 @@ class ArtemisViewModel: ObservableObject {
     @Published var sunPosition: (x: Double, y: Double, z: Double)?
 
     @Published var upcomingEvents: [SpaceEvent] = []
+    @Published var spacecraftInOrbit: [SpacecraftInOrbit] = []
     @Published var eventsError: String?
 
-    @AppStorage("watchedEventId") var watchedEventId: String = "artemis-ii"
+    @AppStorage("watchedEventId") var watchedEventId: String = "iss"
 
     var isWatchingArtemis: Bool { watchedEventId == TrackableMission.artemisII.id }
 
@@ -315,6 +316,14 @@ class ArtemisViewModel: ObservableObject {
                 print("Could not fetch upcoming events: \(error)")
             }
         }
+        Task {
+            do {
+                let spacecraft = try await launchLibraryAPI.fetchInSpace()
+                self.spacecraftInOrbit = spacecraft
+            } catch {
+                print("Could not fetch spacecraft in orbit: \(error)")
+            }
+        }
     }
 
     private func interpolate() {
@@ -340,7 +349,7 @@ class ArtemisViewModel: ObservableObject {
 
         let lt = distCenter / 299_792.458
 
-        latestData = ArtemisData(
+        latestData = TrackingData(
             timestamp: Date(),
             positionKm: (x: tx, y: ty, z: tz),
             velocityKmS: (vx: tgt.vx, vy: tgt.vy, vz: tgt.vz),

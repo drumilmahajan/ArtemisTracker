@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "ArtemisTracker",
+    name: "Galileo",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "ArtemisTracker",
-            path: "Sources/ArtemisTracker",
+            name: "Galileo",
+            path: "Sources/Galileo",
             exclude: ["Info.plist"]
         )
     ]

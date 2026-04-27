@@ -3,6 +3,9 @@
 *.xcodeproj/
 xcuserdata/
 DerivedData/
+Galileo.app/
+Galileo.pkg
+Galileo.zip
 ArtemisTracker.app/
 ArtemisTracker.pkg
 ArtemisTracker.zip

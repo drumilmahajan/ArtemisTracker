@@ -2,7 +2,7 @@ import SwiftUI
 
 struct EventDetailView: View {
     let event: SpaceEvent
-    @ObservedObject var viewModel: ArtemisViewModel
+    @ObservedObject var viewModel: GalileoViewModel
     @State private var countdown: String = ""
     @State private var timer: Timer?
 

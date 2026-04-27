@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PopoverView: View {
-    @ObservedObject var viewModel: ArtemisViewModel
+    @ObservedObject var viewModel: GalileoViewModel
     var onOpen3D: () -> Void
     var onOpenEvent: (SpaceEvent) -> Void
 
@@ -15,9 +15,10 @@ struct PopoverView: View {
                 }
             } else if let event = viewModel.watchedEvent {
                 watchedEventSection(event)
-            } else {
-                // Nothing selected — show Artemis by default
-                artemisSection
+            } else if let firstMission = TrackableMission.allMissions.first {
+                // Fallback to first available mission
+                let _ = viewModel.watchMission(firstMission)
+                missionSection(firstMission)
             }
 
             Divider()
@@ -52,6 +53,41 @@ struct PopoverView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                }
+            }
+
+            // In Space Now (live from LL2)
+            if !viewModel.spacecraftInOrbit.isEmpty {
+                Divider()
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("IN SPACE NOW")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+
+                    ForEach(viewModel.spacecraftInOrbit) { craft in
+                        HStack(spacing: 6) {
+                            Image(systemName: "airplane")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.cyan)
+                                .rotationEffect(.degrees(-45))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(craft.name)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .lineLimit(1)
+                                Text("\(craft.agencyName) · \(craft.configName)")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            if !craft.timeInSpaceFormatted.isEmpty {
+                                Text(craft.timeInSpaceFormatted)
+                                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(.gray)
+                            }
+                        }
+                    }
                 }
             }
 

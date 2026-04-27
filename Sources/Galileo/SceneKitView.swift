@@ -2,7 +2,7 @@ import SwiftUI
 import SceneKit
 
 struct TrajectorySceneView: NSViewRepresentable {
-    @ObservedObject var viewModel: ArtemisViewModel
+    @ObservedObject var viewModel: GalileoViewModel
     var resetTrigger: Int = 0
 
     private var mission: TrackableMission {
@@ -369,7 +369,7 @@ struct TrajectorySceneView: NSViewRepresentable {
 
         // MARK: - Updates
 
-        func updatePositions(data: ArtemisData, scale: Double, mission: TrackableMission) {
+        func updatePositions(data: TrackingData, scale: Double, mission: TrackableMission) {
             let craftPos = SCNVector3(
                 Float(data.positionKm.x / scale),
                 Float(data.positionKm.y / scale),

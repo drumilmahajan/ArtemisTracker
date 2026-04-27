@@ -58,7 +58,6 @@ struct TrackableMission: Identifiable, Hashable {
 
 extension TrackableMission {
     static let allMissions: [TrackableMission] = [
-        .artemisII,
         .iss,
         .hubble,
         .jwst,

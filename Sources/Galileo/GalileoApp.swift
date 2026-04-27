@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 @main
-struct ArtemisTrackerApp: App {
+struct GalileoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
@@ -18,7 +18,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var popover: NSPopover!
     var sceneWindow: NSWindow?
     var eventWindow: NSWindow?
-    var viewModel = ArtemisViewModel()
+    var viewModel = GalileoViewModel()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -26,7 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: 28)
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "moon.stars.fill", accessibilityDescription: "Artemis Tracker")
+            button.image = NSImage(systemSymbolName: "moon.stars.fill", accessibilityDescription: "Galileo")
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -144,7 +144,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - Full 3D Window
 
 struct SceneWindowView: View {
-    @ObservedObject var viewModel: ArtemisViewModel
+    @ObservedObject var viewModel: GalileoViewModel
     @State private var resetTrigger = 0
 
     private var mission: TrackableMission? { viewModel.watchedMission }
