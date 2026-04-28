@@ -98,28 +98,6 @@ enum MissionData {
                      detail: "Pacific Ocean, off San Diego coast"),
     ]
 
-    // MARK: - Speed Context
-
-    static func speedContext(kmPerSec: Double) -> String {
-        let kmPerHour = kmPerSec * 3600
-        let mach = kmPerSec / 0.343 // speed of sound ~343 m/s
-        if mach > 1 {
-            return String(format: "Mach %.0f (%.0f km/h)", mach, kmPerHour)
-        }
-        return String(format: "%.0f km/h", kmPerHour)
-    }
-
-    static func speedComparison(kmPerSec: Double) -> String {
-        let issSpeed = 7.66 // km/s
-        let bulletSpeed = 1.0 // km/s (rifle bullet ~1 km/s)
-        if kmPerSec > issSpeed {
-            return String(format: "%.1fx speed of ISS", kmPerSec / issSpeed)
-        } else if kmPerSec > bulletSpeed {
-            return String(format: "%.0fx speed of a bullet", kmPerSec / bulletSpeed)
-        }
-        return String(format: "%.0f km/h", kmPerSec * 3600)
-    }
-
     // MARK: - MET Formatting
 
     static func metString(from date: Date = Date()) -> String {

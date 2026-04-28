@@ -2,7 +2,6 @@ import Foundation
 
 struct HorizonsAPI {
     private let baseURL = "https://ssd.jpl.nasa.gov/api/horizons.api"
-    private let artemisID = "-1024"  // Artemis II spacecraft
     private let moonID = "301"       // Moon
 
     /// Fetch Sun position relative to a center body
@@ -33,38 +32,6 @@ struct HorizonsAPI {
         return (x: v.x, y: v.y, z: v.z, vx: v.vx, vy: v.vy, vz: v.vz, lt: v.lt, rr: v.rr)
     }
 
-    /// Returns raw state vectors for Artemis and Moon, plus light-time and range-rate
-    func fetchRawVectors() async throws -> (
-        artemis: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double),
-        moon: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double),
-        lightTime: Double,
-        rangeRate: Double
-    ) {
-        let now = Date()
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-
-        let startTime = formatter.string(from: now.addingTimeInterval(-3600))
-        let stopTime = formatter.string(from: now)
-
-        async let artemisVectors = fetchVectors(target: artemisID, center: "500@399", start: startTime, stop: stopTime, step: "30 m")
-        async let moonVectors = fetchVectors(target: moonID, center: "500@399", start: startTime, stop: stopTime, step: "30 m")
-
-        let (artResult, moonResult) = try await (artemisVectors, moonVectors)
-
-        guard let art = artResult.last, let moon = moonResult.last else {
-            throw TrackerError.noDataAvailable
-        }
-
-        return (
-            artemis: (x: art.x, y: art.y, z: art.z, vx: art.vx, vy: art.vy, vz: art.vz),
-            moon: (x: moon.x, y: moon.y, z: moon.z, vx: moon.vx, vy: moon.vy, vz: moon.vz),
-            lightTime: art.lt,
-            rangeRate: art.rr
-        )
-    }
-
     /// Fetches an orbital trail for any mission based on its orbit type
     func fetchOrbitTrail(mission: TrackableMission) async throws -> [(x: Double, y: Double, z: Double)] {
         let now = Date()
@@ -75,24 +42,15 @@ struct HorizonsAPI {
         let (pastDuration, futureDuration, step): (TimeInterval, TimeInterval, String) = {
             switch mission.orbitType {
             case .lowEarthOrbit:
-                // ~2 orbits back, 1 forward (~90 min period)
                 return (3 * 3600, 1.5 * 3600, "2 m")
             case .lunarTransit:
-                // Full mission
-                return (0, 0, "1 h")  // handled separately for Artemis
+                return (5 * 86400, 5 * 86400, "1 h")
             case .lagrangePoint:
-                // 90 days to show halo orbit
                 return (45 * 86400, 45 * 86400, "12 h")
             case .interplanetary:
-                // 1 year arc
                 return (180 * 86400, 180 * 86400, "2 d")
             }
         }()
-
-        // Artemis uses its fixed mission window
-        if mission.id == TrackableMission.artemisII.id {
-            return try await fetchFullTrajectory()
-        }
 
         let startTime = formatter.string(from: now.addingTimeInterval(-pastDuration))
         let stopTime = formatter.string(from: now.addingTimeInterval(futureDuration))
@@ -107,31 +65,19 @@ struct HorizonsAPI {
         return vectors.map { (x: $0.x, y: $0.y, z: $0.z) }
     }
 
-    /// Fetches the full planned trajectory for Artemis II (positions only)
-    // Artemis II launched April 1, 2026 22:35 UTC. Horizons data starts ~3.5h after.
-    // Mission is ~10 days.
-    private let missionStart = "2026-04-02 03:00"
-    private let missionEnd = "2026-04-10 23:00"
-
-    /// Fetches full planned trajectory for Artemis II
-    func fetchFullTrajectory() async throws -> [(x: Double, y: Double, z: Double)] {
-        let vectors = try await fetchVectors(
-            target: artemisID,
-            center: "500@399",
-            start: missionStart,
-            stop: missionEnd,
-            step: "1 h"
-        )
-        return vectors.map { (x: $0.x, y: $0.y, z: $0.z) }
-    }
-
-    /// Fetches Moon positions for a full orbit (~28 days) so the complete circle is visible
+    /// Fetches Moon positions for a full orbit (~28 days)
     func fetchMoonOrbit() async throws -> [(x: Double, y: Double, z: Double)] {
+        let now = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        let start = formatter.string(from: now.addingTimeInterval(-14 * 86400))
+        let stop = formatter.string(from: now.addingTimeInterval(14 * 86400))
         let vectors = try await fetchVectors(
             target: moonID,
             center: "500@399",
-            start: "2026-03-25",
-            stop: "2026-04-22",
+            start: start,
+            stop: stop,
             step: "4 h"
         )
         return vectors.map { (x: $0.x, y: $0.y, z: $0.z) }

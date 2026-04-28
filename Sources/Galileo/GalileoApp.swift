@@ -19,6 +19,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var sceneWindow: NSWindow?
     var eventWindow: NSWindow?
     var viewModel = GalileoViewModel()
+    private var sceneWindowObserver: Any?
+    private var eventWindowObserver: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -32,7 +34,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 320, height: 380)
+        popover.contentSize = NSSize(width: 320, height: 500)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(
@@ -43,6 +45,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         viewModel.startTracking()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        viewModel.stopTracking()
     }
 
     @objc func togglePopover() {
@@ -75,7 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         window.contentView = hostingView
-        let missionName = viewModel.watchedMission?.name ?? "Artemis II"
+        let missionName = viewModel.watchedMission?.name ?? "Mission"
         window.title = "\(missionName) - 3D Trajectory"
         window.isReleasedWhenClosed = false
         window.center()
@@ -86,12 +92,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         sceneWindow = window
 
-        NotificationCenter.default.addObserver(
+        if let old = sceneWindowObserver {
+            NotificationCenter.default.removeObserver(old)
+        }
+        sceneWindowObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
         ) { [weak self] _ in
             self?.sceneWindow = nil
+            self?.sceneWindowObserver = nil
             if self?.eventWindow == nil {
                 NSApp.setActivationPolicy(.accessory)
             }
@@ -103,7 +113,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func openEventDetail(_ event: SpaceEvent) {
         popover.performClose(nil)
 
-        // Close previous event window
         eventWindow?.close()
 
         let hostingView = NSHostingView(
@@ -128,12 +137,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         eventWindow = window
 
-        NotificationCenter.default.addObserver(
+        if let old = eventWindowObserver {
+            NotificationCenter.default.removeObserver(old)
+        }
+        eventWindowObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
         ) { [weak self] _ in
             self?.eventWindow = nil
+            self?.eventWindowObserver = nil
             if self?.sceneWindow == nil {
                 NSApp.setActivationPolicy(.accessory)
             }
@@ -163,24 +176,7 @@ struct SceneWindowView: View {
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundStyle(.secondary)
 
-                        if viewModel.isWatchingArtemis {
-                            Text(viewModel.met)
-                                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(.quaternary).frame(height: 4)
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(LinearGradient(colors: [.blue, .cyan, .green],
-                                                             startPoint: .leading, endPoint: .trailing))
-                                        .frame(width: max(3, geo.size.width * viewModel.missionProgress), height: 4)
-                                }
-                            }
-                            .frame(height: 4)
-                            Text(String(format: "Mission %.1f%% complete", viewModel.missionProgress * 100))
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundStyle(.tertiary)
-                        } else if let m = mission {
+                        if let m = mission {
                             Text(m.description)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
@@ -208,7 +204,7 @@ struct SceneWindowView: View {
                         // Telemetry
                         let centerLabel = mission?.centerBody == .sun ? "FROM SUN" : "FROM EARTH"
                         Group {
-                            StatBlock(label: centerLabel, value: viewModel.units.formatDistance(data.distanceFromEarthKm), color: .blue)
+                            StatBlock(label: centerLabel, value: viewModel.units.formatDistance(data.distanceFromCenterKm), color: .blue)
                             if mission?.showMoon == true {
                                 StatBlock(label: "FROM MOON", value: viewModel.units.formatDistance(data.distanceFromMoonKm), color: .gray)
                             }
@@ -216,9 +212,6 @@ struct SceneWindowView: View {
                             StatBlock(label: "SIGNAL DELAY", value: data.signalDelayFormatted, color: .cyan)
                             StatBlock(label: "RANGE RATE", value: viewModel.units.formatVelocity(data.rangeRateKmS),
                                       color: data.rangeRateKmS > 0 ? .red : .green)
-                            if viewModel.isWatchingArtemis {
-                                StatBlock(label: "PHASE", value: data.missionPhase, color: .green)
-                            }
                         }
 
                         Divider()
@@ -236,47 +229,6 @@ struct SceneWindowView: View {
                                 .font(.system(size: 10, design: .monospaced))
                         }
                         .foregroundStyle(.secondary)
-
-                        // Artemis-specific: crew + timeline
-                        if viewModel.isWatchingArtemis {
-                            Divider()
-
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("CREW")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.tertiary)
-                                ForEach(MissionData.crew, id: \.name) { member in
-                                    HStack(spacing: 6) {
-                                        Text(member.flag).font(.system(size: 12))
-                                        VStack(alignment: .leading, spacing: 0) {
-                                            Text(member.name)
-                                                .font(.system(size: 10, weight: .medium))
-                                            Text("\(member.role) · \(member.agency)")
-                                                .font(.system(size: 8))
-                                                .foregroundStyle(.secondary)
-                                        }
-                                    }
-                                }
-                            }
-
-                            Divider()
-
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("TIMELINE")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.tertiary)
-                                ForEach(MissionData.timeline, id: \.title) { event in
-                                    HStack(spacing: 6) {
-                                        Image(systemName: event.isPast ? "checkmark.circle.fill" : "circle")
-                                            .font(.system(size: 9))
-                                            .foregroundStyle(event.isPast ? .green : .secondary)
-                                        Text(event.title)
-                                            .font(.system(size: 9, weight: event.isPast ? .regular : .medium))
-                                            .foregroundStyle(event.isPast ? .secondary : .primary)
-                                    }
-                                }
-                            }
-                        }
                     } else {
                         Spacer()
                         ProgressView()
@@ -296,22 +248,6 @@ struct SceneWindowView: View {
             }
             .frame(width: 220)
             .background(.ultraThinMaterial)
-        }
-    }
-}
-
-struct LegendRow: View {
-    let color: Color
-    let label: String
-
-    var body: some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 1)
-                .fill(color)
-                .frame(width: 14, height: 3)
-            Text(label)
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.secondary)
         }
     }
 }

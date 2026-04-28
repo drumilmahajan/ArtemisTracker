@@ -6,7 +6,7 @@ struct TrajectorySceneView: NSViewRepresentable {
     var resetTrigger: Int = 0
 
     private var mission: TrackableMission {
-        viewModel.watchedMission ?? .artemisII
+        viewModel.watchedMission ?? TrackableMission.allMissions.first ?? .iss
     }
 
     func makeNSView(context: Context) -> SCNView {
@@ -478,7 +478,7 @@ struct TrajectorySceneView: NSViewRepresentable {
             // Auto-frame camera to include the trail
             if !points.isEmpty {
                 frameCamera(craftPos: lastCraftPos,
-                            mission: TrackableMission.allMissions.first { $0.id == currentMissionId } ?? .artemisII)
+                            mission: TrackableMission.allMissions.first { $0.id == currentMissionId } ?? TrackableMission.allMissions.first ?? .iss)
             }
         }
 
@@ -516,7 +516,7 @@ struct TrajectorySceneView: NSViewRepresentable {
         // MARK: - Camera
 
         func resetCamera() {
-            frameCamera(craftPos: lastCraftPos, mission: TrackableMission.allMissions.first { $0.id == currentMissionId } ?? .artemisII)
+            frameCamera(craftPos: lastCraftPos, mission: TrackableMission.allMissions.first { $0.id == currentMissionId } ?? TrackableMission.allMissions.first ?? .iss)
         }
 
         private func frameCamera(craftPos: SCNVector3, mission: TrackableMission) {

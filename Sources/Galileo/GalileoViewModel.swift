@@ -51,69 +51,14 @@ struct TrackingData {
     let velocityKmS: (vx: Double, vy: Double, vz: Double)
     let moonPositionKm: (x: Double, y: Double, z: Double)
     let moonVelocityKmS: (vx: Double, vy: Double, vz: Double)
-    let distanceFromEarthKm: Double
+    let distanceFromCenterKm: Double  // distance from center body (Earth or Sun)
     let distanceFromMoonKm: Double
     let speedKmS: Double
-    let lightTimeSeconds: Double    // one-way signal delay
-    let rangeRateKmS: Double        // positive = moving away from Earth
-
-    var distanceFromEarthFormatted: String {
-        if distanceFromEarthKm > 1_000_000 {
-            return String(format: "%.1fM km", distanceFromEarthKm / 1_000_000)
-        }
-        return String(format: "%.0f km", distanceFromEarthKm)
-    }
-
-    var distanceFromMoonFormatted: String {
-        if distanceFromMoonKm > 1_000_000 {
-            return String(format: "%.1fM km", distanceFromMoonKm / 1_000_000)
-        }
-        return String(format: "%.0f km", distanceFromMoonKm)
-    }
-
-    var speedFormatted: String {
-        return String(format: "%.2f km/s", speedKmS)
-    }
+    let lightTimeSeconds: Double
+    let rangeRateKmS: Double
 
     var signalDelayFormatted: String {
         return String(format: "%.2fs", lightTimeSeconds)
-    }
-
-    var missionPhase: String {
-        let now = Date()
-        let launch = MissionData.launchDate
-        let enterSOI = MissionData.utcDate(2026, 4, 6, 4, 43)
-        let closestApproach = MissionData.utcDate(2026, 4, 6, 23, 6)
-        let exitSOI = MissionData.utcDate(2026, 4, 7, 17, 27)
-        let splashdown = MissionData.splashdownDate
-
-        if now < launch {
-            return "Pre-Launch"
-        } else if now > splashdown {
-            return "Mission Complete"
-        } else if now < enterSOI {
-            if distanceFromEarthKm < 38_440 {
-                return "Near Earth"
-            }
-            return "Outbound Transit"
-        } else if now < closestApproach {
-            return "Lunar Approach"
-        } else if now < exitSOI {
-            if distanceFromMoonKm < 15_000 {
-                return "Lunar Flyby"
-            }
-            return "Lunar Vicinity"
-        } else {
-            if distanceFromEarthKm < 38_440 {
-                return "Reentry Approach"
-            }
-            return "Return Transit"
-        }
-    }
-
-    var progressToMoon: Double {
-        let earthMoonDistance = 384_400.0
-        return min(1.0, distanceFromEarthKm / earthMoonDistance)
     }
 }
 
@@ -125,8 +70,6 @@ class GalileoViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var lastAPIFetch: Date?
-    @Published var met: String = MissionData.metString()
-    @Published var missionProgress: Double = MissionData.missionProgress()
 
     @Published var plannedTrajectory: [(x: Double, y: Double, z: Double)] = []
     @Published var moonOrbit: [(x: Double, y: Double, z: Double)] = []
@@ -137,8 +80,6 @@ class GalileoViewModel: ObservableObject {
     @Published var eventsError: String?
 
     @AppStorage("watchedEventId") var watchedEventId: String = "iss"
-
-    var isWatchingArtemis: Bool { watchedEventId == TrackableMission.artemisII.id }
 
     /// The currently watched trackable mission (if any)
     var watchedMission: TrackableMission? {
@@ -155,13 +96,13 @@ class GalileoViewModel: ObservableObject {
         let changed = watchedEventId != mission.id
         watchedEventId = mission.id
         if changed {
-            // Reset tracking state and re-fetch for new target
             latestData = nil
             baseTarget = nil
             baseMoon = nil
             baseTime = nil
             plannedTrajectory = []
             moonOrbit = []
+            restartAPITimer(interval: mission.refreshInterval)
             fetchFromAPI()
             fetchOrbitTrail(for: mission)
         }
@@ -171,8 +112,13 @@ class GalileoViewModel: ObservableObject {
         watchedEventId = event.id
     }
 
-    func watchArtemis() {
-        watchMission(.artemisII)
+    /// Migrate persisted watchedEventId if it references an unavailable mission
+    private func migrateWatchedEventIfNeeded() {
+        if watchedMission == nil && watchedEvent == nil {
+            if let first = TrackableMission.allMissions.first {
+                watchedEventId = first.id
+            }
+        }
     }
 
     private var baseTarget: (x: Double, y: Double, z: Double, vx: Double, vy: Double, vz: Double)?
@@ -183,41 +129,41 @@ class GalileoViewModel: ObservableObject {
 
     private var apiTimer: Timer?
     private var interpolationTimer: Timer?
-    private var metTimer: Timer?
     private var eventsTimer: Timer?
     private let horizonsAPI = HorizonsAPI()
     private let launchLibraryAPI = LaunchLibraryAPI()
 
     func startTracking() {
+        migrateWatchedEventIfNeeded()
         fetchFromAPI()
         if let mission = watchedMission {
             fetchOrbitTrail(for: mission)
-        } else {
-            fetchTrajectory()
         }
         fetchUpcomingEvents()
 
-        apiTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        let interval = watchedMission?.refreshInterval ?? 30
+        apiTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.fetchFromAPI()
             }
         }
         interpolationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async {
+            Task { @MainActor [weak self] in
                 self?.interpolate()
             }
         }
-        // Update MET every second
-        metTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.met = MissionData.metString()
-                self?.missionProgress = MissionData.missionProgress()
-            }
-        }
-        // Refresh upcoming events every 10 minutes
         eventsTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.fetchUpcomingEvents()
+            }
+        }
+    }
+
+    private func restartAPITimer(interval: TimeInterval) {
+        apiTimer?.invalidate()
+        apiTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.fetchFromAPI()
             }
         }
     }
@@ -237,7 +183,6 @@ class GalileoViewModel: ObservableObject {
                 self.baseLightTime = target.lt
                 self.baseRangeRate = target.rr
 
-                // Fetch secondary body (Moon) if needed
                 if let secondaryId = mission.secondaryBodyId {
                     let moon = try await horizonsAPI.fetchTargetVectors(
                         targetId: secondaryId, center: mission.centerBody.rawValue)
@@ -245,7 +190,6 @@ class GalileoViewModel: ObservableObject {
                                     vx: moon.vx, vy: moon.vy, vz: moon.vz)
                 }
 
-                // Fetch Sun position for Earth-centered views (for lighting)
                 if mission.centerBody == .earth {
                     let sun = try await horizonsAPI.fetchSunPosition(center: mission.centerBody.rawValue)
                     self.sunPosition = sun
@@ -264,25 +208,6 @@ class GalileoViewModel: ObservableObject {
         }
     }
 
-    private func fetchTrajectory() {
-        Task {
-            do {
-                let traj = try await horizonsAPI.fetchFullTrajectory()
-                self.plannedTrajectory = traj
-            } catch {
-                print("Could not fetch trajectory: \(error)")
-            }
-        }
-        Task {
-            do {
-                let orb = try await horizonsAPI.fetchMoonOrbit()
-                self.moonOrbit = orb
-            } catch {
-                print("Could not fetch moon orbit: \(error)")
-            }
-        }
-    }
-
     private func fetchOrbitTrail(for mission: TrackableMission) {
         Task {
             do {
@@ -292,7 +217,6 @@ class GalileoViewModel: ObservableObject {
                 print("Could not fetch orbit trail for \(mission.name): \(error)")
             }
         }
-        // Fetch Moon orbit if needed
         if mission.showMoon {
             Task {
                 do {
@@ -355,7 +279,7 @@ class GalileoViewModel: ObservableObject {
             velocityKmS: (vx: tgt.vx, vy: tgt.vy, vz: tgt.vz),
             moonPositionKm: (x: mx, y: my, z: mz),
             moonVelocityKmS: baseMoon.map { (vx: $0.vx, vy: $0.vy, vz: $0.vz) } ?? (vx: 0, vy: 0, vz: 0),
-            distanceFromEarthKm: distCenter,
+            distanceFromCenterKm: distCenter,
             distanceFromMoonKm: distMoon,
             speedKmS: speed,
             lightTimeSeconds: lt,
@@ -366,7 +290,6 @@ class GalileoViewModel: ObservableObject {
     func stopTracking() {
         apiTimer?.invalidate(); apiTimer = nil
         interpolationTimer?.invalidate(); interpolationTimer = nil
-        metTimer?.invalidate(); metTimer = nil
         eventsTimer?.invalidate(); eventsTimer = nil
     }
 }

@@ -19,7 +19,7 @@ struct SpaceEvent: Identifiable, Hashable {
     var countdownFormatted: String {
         let secs = Int(timeUntilLaunch)
         if secs < 0 {
-            return "LIVE"
+            return secs > -86400 ? "LIVE" : "Launched"
         }
         let days = secs / 86400
         let hours = (secs % 86400) / 3600
